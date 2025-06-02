@@ -65,9 +65,55 @@
       scene.add(camera);
 
 
-      const vrUI = new THREE.Group();
+const vrUI = new THREE.Group();
 camera.add(vrUI);
-vrUI.position.set(0, -0.5, -2); // Ajusta según visibilidad
+vrUI.position.set(0, -0.5, -2);
+
+// === ⏱️ Cronómetro ===
+const canvasTimer = document.createElement('canvas');
+canvasTimer.width = 256;
+canvasTimer.height = 64;
+const ctxTimer = canvasTimer.getContext('2d');
+ctxTimer.fillStyle = '#fff';
+ctxTimer.font = '30px sans-serif';
+ctxTimer.fillText('⏱️ 0.00 s', 10, 40);
+
+const texTimer = new THREE.CanvasTexture(canvasTimer);
+const matTimer = new THREE.MeshBasicMaterial({ map: texTimer, transparent: true });
+const geoTimer = new THREE.PlaneGeometry(1.5, 0.4);
+const meshTimer = new THREE.Mesh(geoTimer, matTimer);
+meshTimer.position.set(0, 0.4, 0); // más arriba
+vrUI.add(meshTimer);
+
+// === 🔥 Barra de calor ===
+const heatCanvas = document.createElement('canvas');
+heatCanvas.width = 256;
+heatCanvas.height = 32;
+const ctxHeat = heatCanvas.getContext('2d');
+
+const texHeat = new THREE.CanvasTexture(heatCanvas);
+const matHeat = new THREE.MeshBasicMaterial({ map: texHeat, transparent: true });
+const geoHeat = new THREE.PlaneGeometry(1.5, 0.2);
+const meshHeat = new THREE.Mesh(geoHeat, matHeat);
+meshHeat.position.set(0, 0, 0);
+vrUI.add(meshHeat);
+
+// === 💣 Puntuación ===
+const scoreCanvas = document.createElement('canvas');
+scoreCanvas.width = 256;
+scoreCanvas.height = 64;
+const ctxScore = scoreCanvas.getContext('2d');
+ctxScore.fillStyle = '#fff';
+ctxScore.font = '22px sans-serif';
+ctxScore.fillText('💣 0 🛩️ 0', 10, 40);
+
+const texScore = new THREE.CanvasTexture(scoreCanvas);
+const matScore = new THREE.MeshBasicMaterial({ map: texScore, transparent: true });
+const geoScore = new THREE.PlaneGeometry(1.5, 0.4);
+const meshScore = new THREE.Mesh(geoScore, matScore);
+meshScore.position.set(0, -0.4, 0); // más abajo
+vrUI.add(meshScore);
+
 
 const canvas = document.createElement('canvas');
 canvas.width = 256;
@@ -192,7 +238,15 @@ scene.add(directionalLight);
       renderer.xr.addEventListener('sessionstart', () => {
         const session = renderer.xr.getSession();
 
+          // 🟡 OCULTAR ELEMENTOS 2D AL ENTRAR A VR
+          document.getElementById('heatBar').style.display = 'none';
+          document.getElementById('scoreBoard').style.display = 'none';
+          document.getElementById('timeDisplay').style.display = 'none';
+
         session.addEventListener('inputsourceschange', () => {
+            document.getElementById('heatBar').style.display = 'block';
+  document.getElementById('scoreBoard').style.display = 'block';
+  document.getElementById('timeDisplay').style.display = 'block';
           for (const source of session.inputSources) {
             if (source && source.gamepad) {
               const gp = source.gamepad;
@@ -1388,9 +1442,27 @@ if (startTime !== null) {
   document.getElementById('timeElapsed').innerText = elapsedSeconds;
 
   // Actualizar canvas para UI VR
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillText(`⏱️ ${elapsedSeconds}s`, 10, 40);
-  texture.needsUpdate = true;
+// 🕒 Actualizar cronómetro VR
+ctxTimer.clearRect(0, 0, canvasTimer.width, canvasTimer.height);
+ctxTimer.fillText(`⏱️ ${elapsedSeconds}s`, 10, 40);
+texTimer.needsUpdate = true;
+
+// 🔥 Actualizar barra de calor VR
+ctxHeat.clearRect(0, 0, heatCanvas.width, heatCanvas.height);
+ctxHeat.fillStyle = '#222';
+ctxHeat.fillRect(0, 0, 256, 32);
+
+ctxHeat.fillStyle = heatPercent > 80 ? 'red' :
+                    heatPercent > 50 ? 'orange' :
+                    heatPercent > 20 ? 'yellow' : 'limegreen';
+ctxHeat.fillRect(0, 0, heatPercent * 2.56, 32); // escala a 256 px
+texHeat.needsUpdate = true;
+
+// 💣 Actualizar puntuación VR
+ctxScore.clearRect(0, 0, scoreCanvas.width, scoreCanvas.height);
+ctxScore.fillText(`💣 ${avionesRectosEliminados} 🛩️ ${avionesCurvosEliminados}`, 10, 40);
+texScore.needsUpdate = true;
+
 }
 
 
