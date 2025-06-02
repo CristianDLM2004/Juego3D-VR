@@ -116,12 +116,12 @@ meshScore.position.set(0, -0.4, 0); // más abajo
 vrUI.add(meshScore);
 
 // ✅ Reacomodar elementos del panel VR con posiciones correctas
-meshTimer.position.set(0.5, 0.4, 0);     // centrado, arriba
-meshHeat.position.set(0.2, 0.0, 0);      // justo en el centro
-meshScore.position.set(0.0, -0.3, 0);    // centrado, abajo
+meshTimer.position.set(0.6, 0.5, 0);     // centrado, arriba
+meshHeat.position.set(-0.1, -0.3, 0);      // justo en el centro
+meshScore.position.set(-0.1, -0.4, 0);    // centrado, abajo
 
 meshTimer.scale.set(0.7, 0.7, 0.7);       // proporción más natural
-meshHeat.scale.set(1, 0.15, 1);        
+meshHeat.scale.set(0.7, 0.15, 1);        
 meshScore.scale.set(0.7, 0.7, 0.7);       
 
 
@@ -993,7 +993,7 @@ avion.add(engineSound);
   mesh: avion,
   speedRecto: 0.7,
   curvo: false,
-  health: 8,
+  health: 3,
   isFalling: false
 });
 
@@ -1063,7 +1063,7 @@ avion.add(engineSound);
   mesh: avion,
   speedCurvo,
   curvo: true,
-  health: 8,
+  health: 3,
   isFalling: false
 });
 
