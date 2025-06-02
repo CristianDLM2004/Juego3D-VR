@@ -82,14 +82,6 @@ const texTimer = new THREE.CanvasTexture(canvasTimer);
 const matTimer = new THREE.MeshBasicMaterial({ map: texTimer, transparent: true });
 const geoTimer = new THREE.PlaneGeometry(1.5, 0.4);
 const meshTimer = new THREE.Mesh(geoTimer, matTimer);
-// 🔄 Reacomodar elementos del panel VR
-meshTimer.position.set(1.0, 0.7, 0);     // cronómetro a la derecha (arriba)
-meshHeat.position.set(-1.0, -0.6, 0);    // barra de calor a la izquierda abajo
-meshScore.position.set(-1.0, -0.9, 0);   // puntuación debajo de la barra
-
-meshTimer.scale.set(1.2, 0.3, 1);  // más delgado
-meshHeat.scale.set(1.2, 0.2, 1);   // más baja
-meshScore.scale.set(1.2, 0.3, 1);  // texto más angosto
 
 
 vrUI.add(meshTimer);
@@ -122,6 +114,16 @@ const geoScore = new THREE.PlaneGeometry(1.5, 0.4);
 const meshScore = new THREE.Mesh(geoScore, matScore);
 meshScore.position.set(0, -0.4, 0); // más abajo
 vrUI.add(meshScore);
+
+// ✅ Reacomodar elementos del panel VR con posiciones correctas
+meshTimer.position.set(1.0, 0.7, 0);     // cronómetro a la derecha (arriba)
+meshHeat.position.set(-1.0, -0.6, 0);    // barra de calor a la izquierda abajo
+meshScore.position.set(-1.0, -0.9, 0);   // puntuación debajo de la barra
+
+meshTimer.scale.set(1.2, 0.3, 1);  // más delgado
+meshHeat.scale.set(1.2, 0.2, 1);   // más baja
+meshScore.scale.set(1.2, 0.3, 1);  // texto más angosto
+
 
 
 
