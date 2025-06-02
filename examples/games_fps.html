@@ -115,6 +115,38 @@ const meshScore = new THREE.Mesh(geoScore, matScore);
 meshScore.position.set(0, -0.4, 0); // más abajo
 vrUI.add(meshScore);
 
+// === 🎉 Mensaje de Victoria VR ===
+const victoryCanvas = document.createElement('canvas');
+victoryCanvas.width = 512;
+victoryCanvas.height = 256;
+const ctxVictory = victoryCanvas.getContext('2d');
+ctxVictory.fillStyle = 'rgba(0, 0, 0, 0.7)';
+ctxVictory.fillRect(0, 0, victoryCanvas.width, victoryCanvas.height);
+ctxVictory.fillStyle = 'white';
+ctxVictory.font = '28px sans-serif';
+ctxVictory.textAlign = 'center';
+ctxVictory.clearRect(0, 0, victoryCanvas.width, victoryCanvas.height);
+ctxVictory.fillStyle = 'rgba(0, 0, 0, 0.7)';
+ctxVictory.fillRect(0, 0, victoryCanvas.width, victoryCanvas.height);
+ctxVictory.fillStyle = 'white';
+ctxVictory.font = '28px sans-serif';
+ctxVictory.textAlign = 'center';
+ctxVictory.fillText(`🎉 ¡Ganaste en ${elapsedSeconds}s!`, 256, 100);
+ctxVictory.fillText(nuevoRecord ? '🏆 ¡Nuevo récord!' : `⏱️ Récord: ${recordAnterior}s`, 256, 150);
+texVictory.needsUpdate = true;
+meshVictory.visible = true;
+
+
+const texVictory = new THREE.CanvasTexture(victoryCanvas);
+const matVictory = new THREE.MeshBasicMaterial({ map: texVictory, transparent: true });
+const geoVictory = new THREE.PlaneGeometry(2, 1);
+const meshVictory = new THREE.Mesh(geoVictory, matVictory);
+meshVictory.position.set(0, 0, -2); // 2 metros al frente de la cámara
+meshVictory.visible = false; // lo activamos solo cuando ganes
+
+vrUI.add(meshVictory); // lo añadimos al HUD
+
+
 // ✅ Reacomodar elementos del panel VR con posiciones correctas
 meshTimer.position.set(0.6, 0.6, 0);     // centrado, arriba
 meshHeat.position.set(-0.1, -0.2, 0);      // justo en el centro
@@ -647,6 +679,15 @@ sphere.velocity.copy(shootDirection).multiplyScalar(impulse);  // ✅ usar shoot
   aviso.style.borderRadius = '10px';
   aviso.style.zIndex = '9999';
   document.body.appendChild(aviso);
+
+  // Mostrar también el panel VR
+meshVictory.visible = true;
+
+setTimeout(() => {
+  meshVictory.visible = false;
+}, 5000);
+
+
 
   setTimeout(() => {
     document.body.removeChild(aviso);
