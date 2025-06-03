@@ -47,6 +47,11 @@
 
       import { VRButton } from 'three/addons/webxr/VRButton.js';
 
+      import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+      
+import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+
+
 			const clock = new THREE.Clock();
 
 			const scene = new THREE.Scene();
@@ -581,6 +586,9 @@ audioLoader.load('sounds/shoot.mp3', buffer => {
 							localStorage.setItem(RECORD_KEY, timeTaken);
 						  }
 
+              showVRVictoryPanel(timeTaken, nuevoRecord);
+
+
 						  const victoryDiv = document.createElement('div');
 						  victoryDiv.innerHTML = `
 							🎉 ¡Ganaste!<br>
@@ -1028,6 +1036,101 @@ function actualizarCaidaAvion(avion, deltaTime, i) {
     aviones.splice(i, 1);
   }
 }
+
+let vrVictoryPanel = null;
+
+function showVRVictoryPanel(timeTaken, nuevoRecord) {
+  if (vrVictoryPanel) return; // Evita crear múltiples
+
+  vrVictoryPanel = new THREE.Group();
+
+  // Fondo panel
+  const panelGeometry = new THREE.PlaneGeometry(1.5, 1);
+  const panelMaterial = new THREE.MeshBasicMaterial({ color: 'rgba(0,0,0,0.8)', side: THREE.DoubleSide });
+  const panelMesh = new THREE.Mesh(panelGeometry, panelMaterial);
+  vrVictoryPanel.add(panelMesh);
+
+  // Texto (opcional: necesitas cargar fuente, o reemplaza con CanvasTexture si no quieres usar FontLoader)
+  const loader = new THREE.FontLoader();
+  loader.load('./fonts/helvetiker_regular.typeface.json', function (font) {
+    const textGeometry = new THREE.TextGeometry('🎉 Ganaste!', {
+      font: font,
+      size: 0.15,
+      height: 0.02,
+    });
+    const textMaterial = new THREE.MeshBasicMaterial({ color: 'limegreen' });
+    const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+    textMesh.position.set(-0.65, 0.25, 0.01);
+    vrVictoryPanel.add(textMesh);
+
+    const timeTextGeo = new THREE.TextGeometry(`Tiempo: ${timeTaken}s`, {
+      font: font,
+      size: 0.1,
+      height: 0.01,
+    });
+    const timeTextMat = new THREE.MeshBasicMaterial({ color: 'white' });
+    const timeTextMesh = new THREE.Mesh(timeTextGeo, timeTextMat);
+    timeTextMesh.position.set(-0.6, 0.05, 0.01);
+    vrVictoryPanel.add(timeTextMesh);
+
+    const recordTextGeo = new THREE.TextGeometry(
+      nuevoRecord ? '🏆 ¡Nuevo récord!' : 'Récord anterior',
+      { font: font, size: 0.1, height: 0.01 }
+    );
+    const recordTextMat = new THREE.MeshBasicMaterial({ color: 'yellow' });
+    const recordTextMesh = new THREE.Mesh(recordTextGeo, recordTextMat);
+    recordTextMesh.position.set(-0.6, -0.1, 0.01);
+    vrVictoryPanel.add(recordTextMesh);
+  });
+
+  // Botón Reiniciar
+  const buttonGeo = new THREE.PlaneGeometry(0.7, 0.25);
+  const buttonMat = new THREE.MeshBasicMaterial({ color: '#4444ff', side: THREE.DoubleSide });
+  const buttonMesh = new THREE.Mesh(buttonGeo, buttonMat);
+  buttonMesh.position.set(0, -0.4, 0.02);
+  vrVictoryPanel.add(buttonMesh);
+
+  // Texto botón con CanvasTexture
+  const buttonCanvas = document.createElement('canvas');
+  buttonCanvas.width = 256;
+  buttonCanvas.height = 64;
+  const ctx = buttonCanvas.getContext('2d');
+  ctx.fillStyle = '#4444ff';
+  ctx.fillRect(0, 0, buttonCanvas.width, buttonCanvas.height);
+  ctx.font = 'bold 36px sans-serif';
+  ctx.fillStyle = 'white';
+  ctx.textAlign = 'center';
+  ctx.fillText('Reiniciar', buttonCanvas.width / 2, 45);
+  const buttonTexture = new THREE.CanvasTexture(buttonCanvas);
+  buttonMesh.material.map = buttonTexture;
+  buttonMesh.material.needsUpdate = true;
+
+  // Posicionar frente a la cámara
+  vrVictoryPanel.position.set(0, 1.5, -2);
+  camera.add(vrVictoryPanel);
+
+  // Detectar disparo en botón con raycaster
+  const raycaster = new THREE.Raycaster();
+  const tempMatrix = new THREE.Matrix4();
+
+  function onSelect() {
+    location.reload();
+  }
+
+  const controller = renderer.xr.getController(0);
+  controller.addEventListener('select', () => {
+    tempMatrix.identity().extractRotation(controller.matrixWorld);
+    raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+    raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+    const intersects = raycaster.intersectObject(buttonMesh);
+    if (intersects.length > 0) {
+      onSelect();
+    }
+  });
+}
+
+
 
 			function animate() {
 			  const deltaTime = Math.min(0.05, clock.getDelta()) / STEPS_PER_FRAME;
