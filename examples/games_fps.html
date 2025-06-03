@@ -24,6 +24,8 @@
 
     import * as THREE from 'three';
 
+    let vrReloaded = false;
+
     const textureLoader = new THREE.TextureLoader();
 
     const smokeTexture = textureLoader.load('./textures/smoke.png');
@@ -164,7 +166,7 @@
     const geoBtn = new THREE.PlaneGeometry(1.2, 0.3);
     const meshBtn = new THREE.Mesh(geoBtn, matBtn);
 
-    meshBtn.position.set(0, -0.4, 0); // debajo del mensaje de victoria
+    meshBtn.position.set(0, -0.2, 0); // debajo del mensaje de victoria
     meshBtn.visible = false;
     meshBtn.name = 'botonReiniciar';
 
@@ -726,108 +728,38 @@
 
 
               const totalDestruidos = avionesRectosEliminados + avionesCurvosEliminados;
-              if (totalDestruidos >= TOTAL_OBJETIVO && !gameWon) {
-                gameWon = true;
-                const endTime = performance.now();
-                const timeTaken = ((endTime - startTime) / 1000).toFixed(2);
+              const endTime = performance.now();
+              const elapsedSeconds = ((endTime - startTime) / 1000).toFixed(2);
+              const recordAnterior = localStorage.getItem('mejorTiempo') || '∞';
+              const nuevoRecord = recordAnterior === '∞' || parseFloat(elapsedSeconds) < parseFloat(recordAnterior);
 
-                // 🟡 Mostrar mensaje inmediato para que el jugador vea que ganó
-                const aviso = document.createElement('div');
-                aviso.innerText = '✅ Objetivo cumplido';
-                document.body.appendChild(aviso);
-
-                // 🧠 Obtener tiempo actual
-                const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(2);
-
-                // 🏆 Revisar récord anterior
-                const recordAnterior = parseFloat(localStorage.getItem('mejorTiempo')) || Infinity;
-                const nuevoRecord = elapsedSeconds < recordAnterior;
-
-                // === 🎉 Actualizar VR Victory UI ===
-                ctxVictory.clearRect(0, 0, victoryCanvas.width, victoryCanvas.height);
-                ctxVictory.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                ctxVictory.fillRect(0, 0, victoryCanvas.width, victoryCanvas.height);
-                ctxVictory.fillStyle = 'white';
-                ctxVictory.font = '28px sans-serif';
-                ctxVictory.textAlign = 'center';
-
-                ctxVictory.fillText(`🎉 ¡Ganaste en ${parseFloat(elapsedSeconds).toFixed(2)}s!`, 256, 100);
-
-                if (nuevoRecord) {
-                  ctxVictory.fillText(`🏆 ¡Nuevo récord!`, 256, 150);
-                } else {
-                  ctxVictory.fillText(`⏱️ Récord: ${recordAnterior}s`, 256, 150);
-                }
-
-                texVictory.needsUpdate = true;
-
-
-
-
-                // (opcional) Quitarlo después de 5 segundos
-                setTimeout(() => {
-                  meshVictory.visible = false;
-                }, 5000);
-
-
-                // Mostrar también el panel VR
-                meshVictory.visible = true;
-                meshBtn.visible = true;
-
-
-                setTimeout(() => {
-                  meshVictory.visible = false;
-                  meshBtn.visible = false;
-
-                }, 10000);
-
-
-
-                setTimeout(() => {
-                  document.body.removeChild(aviso);
-                  document.exitPointerLock();
-
-                  document.getElementById('heatBar').style.display = 'none';
-                  document.getElementById('scoreBoard').style.display = 'none';
-                  document.getElementById('timeDisplay').style.display = 'none';
-                  document.getElementById('overheatWarning').style.display = 'none';
-
-
-                  const recordAnterior = localStorage.getItem(RECORD_KEY);
-                  const nuevoRecord = !recordAnterior || timeTaken < recordAnterior;
-
-                  if (nuevoRecord) {
-                    localStorage.setItem(RECORD_KEY, timeTaken);
-                  }
-
-                  const victoryDiv = document.createElement('div');
-                  victoryDiv.innerHTML = `
-      🎉 ¡Ganaste!<br>
-      Tiempo: <strong>${timeTaken}</strong> segundos<br>
-      ${nuevoRecord ? '🏆 ¡Nuevo récord!' : `⏱️ Récord anterior: ${recordAnterior}s`}
-      <br><br>
-      <button id="reiniciarBtn">Reiniciar</button>
-    `;
-                  victoryDiv.style.position = 'absolute';
-                  victoryDiv.style.top = '50%';
-                  victoryDiv.style.left = '50%';
-                  victoryDiv.style.transform = 'translate(-50%, -50%)';
-                  victoryDiv.style.color = 'white';
-                  victoryDiv.style.fontSize = '22px';
-                  victoryDiv.style.background = 'rgba(0, 0, 0, 0.85)';
-                  victoryDiv.style.padding = '20px';
-                  victoryDiv.style.borderRadius = '12px';
-                  victoryDiv.style.textAlign = 'center';
-                  victoryDiv.style.zIndex = '9999';
-                  document.body.appendChild(victoryDiv);
-
-
-
-                  document.getElementById('reiniciarBtn').onclick = () => {
-                    location.reload();
-                  };
-                }, 2000);
+              if (nuevoRecord) {
+                localStorage.setItem('mejorTiempo', elapsedSeconds);
               }
+
+              // === 🎉 Actualizar VR Victory UI ===
+              ctxVictory.clearRect(0, 0, victoryCanvas.width, victoryCanvas.height);
+              ctxVictory.fillStyle = 'rgba(0, 0, 0, 0.7)';
+              ctxVictory.fillRect(0, 0, victoryCanvas.width, victoryCanvas.height);
+              ctxVictory.fillStyle = 'white';
+              ctxVictory.font = '28px sans-serif';
+              ctxVictory.textAlign = 'center';
+              ctxVictory.fillText(`🎉 ¡Ganaste en ${elapsedSeconds}s!`, 256, 100);
+
+              if (nuevoRecord) {
+                ctxVictory.fillText(`🏆 ¡Nuevo récord!`, 256, 150);
+              } else {
+                ctxVictory.fillText(`⏱️ Récord: ${recordAnterior}s`, 256, 150);
+              }
+
+              texVictory.needsUpdate = true;
+              meshVictory.visible = true;
+              meshBtn.visible = true;
+
+              setTimeout(() => {
+                meshVictory.visible = false;
+                meshBtn.visible = false;
+              }, 5000);
 
 
               avion.isFalling = true;
@@ -1596,6 +1528,23 @@
         texScore.needsUpdate = true;
 
       }
+
+      if (renderer.xr.isPresenting && meshBtn.visible && !vrReloaded) {
+        const session = renderer.xr.getSession();
+        session.inputSources.forEach(source => {
+          const gp = source.gamepad;
+          if (gp) {
+            for (let b of gp.buttons) {
+              if (b.pressed) {
+                vrReloaded = true;
+                location.reload();
+              }
+            }
+          }
+        });
+      }
+
+
 
 
 
