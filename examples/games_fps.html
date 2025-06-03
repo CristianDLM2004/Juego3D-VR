@@ -164,7 +164,7 @@
     const geoBtn = new THREE.PlaneGeometry(1.2, 0.3);
     const meshBtn = new THREE.Mesh(geoBtn, matBtn);
 
-    meshBtn.position.set(0, -0.8, 0); // debajo del mensaje de victoria
+    meshBtn.position.set(0, -0.4, 0); // debajo del mensaje de victoria
     meshBtn.visible = false;
     meshBtn.name = 'botonReiniciar';
 
@@ -312,6 +312,31 @@
           }
         }
       });
+
+      session.addEventListener('select', () => {
+        if (meshBtn.visible) {
+          location.reload();
+        }
+      });
+
+      session.addEventListener('gamepadconnected', () => {
+        const checkButtons = () => {
+          const inputSources = session.inputSources;
+          inputSources.forEach(source => {
+            const gamepad = source.gamepad;
+            if (gamepad) {
+              gamepad.buttons.forEach(button => {
+                if (button.pressed && meshBtn.visible) {
+                  location.reload();
+                }
+              });
+            }
+          });
+          requestAnimationFrame(checkButtons);
+        };
+        checkButtons();
+      });
+
     });
 
 
@@ -726,7 +751,7 @@
                 ctxVictory.font = '28px sans-serif';
                 ctxVictory.textAlign = 'center';
 
-                ctxVictory.fillText(`🎉 ¡Ganaste en ${elapsedSeconds}s!`, 256, 100);
+                ctxVictory.fillText(`🎉 ¡Ganaste en ${parseFloat(elapsedSeconds).toFixed(2)}s!`, 256, 100);
 
                 if (nuevoRecord) {
                   ctxVictory.fillText(`🏆 ¡Nuevo récord!`, 256, 150);
