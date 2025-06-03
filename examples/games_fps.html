@@ -715,7 +715,6 @@
             avion.health -= 1;
             sphere.exploding = true;
             sphere.explodeTime = 0;
-
             if (avion.health <= 0) {
 
               if (avion.curvo) {
@@ -726,42 +725,47 @@
                 document.getElementById('rectosEliminados').innerText = avionesRectosEliminados;
               }
 
-
               const totalDestruidos = avionesRectosEliminados + avionesCurvosEliminados;
-              const endTime = performance.now();
-              const elapsedSeconds = ((endTime - startTime) / 1000).toFixed(2);
-              const recordAnterior = localStorage.getItem('mejorTiempo') || '∞';
-              const nuevoRecord = recordAnterior === '∞' || parseFloat(elapsedSeconds) < parseFloat(recordAnterior);
 
-              if (nuevoRecord) {
-                localStorage.setItem('mejorTiempo', elapsedSeconds);
+              // Solo mostrar victoria si se alcanzó el objetivo y no se había ganado antes
+              if (totalDestruidos >= TOTAL_OBJETIVO && !gameWon) {
+                gameWon = true;  // Bloquear ejecuciones posteriores
+
+                const endTime = performance.now();
+                const elapsedSeconds = ((endTime - startTime) / 1000).toFixed(2);
+                const recordAnterior = localStorage.getItem('mejorTiempo') || '∞';
+                const nuevoRecord = recordAnterior === '∞' || parseFloat(elapsedSeconds) < parseFloat(recordAnterior);
+
+                if (nuevoRecord) {
+                  localStorage.setItem('mejorTiempo', elapsedSeconds);
+                }
+
+                // === 🎉 Mostrar mensaje victoria ===
+                ctxVictory.clearRect(0, 0, victoryCanvas.width, victoryCanvas.height);
+                ctxVictory.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctxVictory.fillRect(0, 0, victoryCanvas.width, victoryCanvas.height);
+                ctxVictory.fillStyle = 'white';
+                ctxVictory.font = '28px sans-serif';
+                ctxVictory.textAlign = 'center';
+                ctxVictory.fillText(`🎉 ¡Ganaste en ${elapsedSeconds}s!`, 256, 100);
+
+                if (nuevoRecord) {
+                  ctxVictory.fillText(`🏆 ¡Nuevo récord!`, 256, 150);
+                } else {
+                  ctxVictory.fillText(`⏱️ Récord: ${recordAnterior}s`, 256, 150);
+                }
+
+                texVictory.needsUpdate = true;
+                meshVictory.visible = true;
+                meshBtn.visible = true;
+
+                setTimeout(() => {
+                  meshVictory.visible = false;
+                  meshBtn.visible = false;
+                }, 5000);
               }
 
-              // === 🎉 Actualizar VR Victory UI ===
-              ctxVictory.clearRect(0, 0, victoryCanvas.width, victoryCanvas.height);
-              ctxVictory.fillStyle = 'rgba(0, 0, 0, 0.7)';
-              ctxVictory.fillRect(0, 0, victoryCanvas.width, victoryCanvas.height);
-              ctxVictory.fillStyle = 'white';
-              ctxVictory.font = '28px sans-serif';
-              ctxVictory.textAlign = 'center';
-              ctxVictory.fillText(`🎉 ¡Ganaste en ${elapsedSeconds}s!`, 256, 100);
-
-              if (nuevoRecord) {
-                ctxVictory.fillText(`🏆 ¡Nuevo récord!`, 256, 150);
-              } else {
-                ctxVictory.fillText(`⏱️ Récord: ${recordAnterior}s`, 256, 150);
-              }
-
-              texVictory.needsUpdate = true;
-              meshVictory.visible = true;
-              meshBtn.visible = true;
-
-              setTimeout(() => {
-                meshVictory.visible = false;
-                meshBtn.visible = false;
-              }, 5000);
-
-
+              // Resto del código para que el avión caiga
               avion.isFalling = true;
 
               let horizontalDirection = new THREE.Vector3();
@@ -777,7 +781,7 @@
                 ).normalize();
 
                 const radius = avion.mesh.userData.radius;
-                const angularSpeed = avion.mesh.userData.speedCurvo * 4; // ✅ CORRECTO AQUÍ
+                const angularSpeed = avion.mesh.userData.speedCurvo * 4;
                 velocidadReal = radius * angularSpeed;
 
                 horizontalDirection.copy(tangent);
@@ -792,6 +796,7 @@
               avion.fallVelocity.y = -1.5;
               avion.verticalSpeed = -1.5;
             }
+
 
 
 
