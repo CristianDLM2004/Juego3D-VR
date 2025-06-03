@@ -725,11 +725,6 @@
                 const recordAnterior = parseFloat(localStorage.getItem('mejorTiempo')) || Infinity;
                 const nuevoRecord = elapsedSeconds < recordAnterior;
 
-                // 💾 Guardar si hay nuevo récord
-                if (nuevoRecord) {
-                  localStorage.setItem('mejorTiempo', elapsedSeconds);
-                }
-
                 // === 🎉 Actualizar VR Victory UI ===
                 ctxVictory.clearRect(0, 0, victoryCanvas.width, victoryCanvas.height);
                 ctxVictory.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -737,6 +732,17 @@
                 ctxVictory.fillStyle = 'white';
                 ctxVictory.font = '28px sans-serif';
                 ctxVictory.textAlign = 'center';
+
+                ctxVictory.fillText(`🎉 ¡Ganaste en ${elapsedSeconds}s!`, 256, 100);
+
+                if (nuevoRecord) {
+                  ctxVictory.fillText(`🏆 ¡Nuevo récord!`, 256, 150);
+                } else {
+                  ctxVictory.fillText(`⏱️ Récord: ${recordAnterior}s`, 256, 150);
+                }
+
+                texVictory.needsUpdate = true;
+
 
 
 
