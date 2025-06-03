@@ -1,17 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+	<head>
+		<title>three.js - misc - octree collisions</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link type="text/css" rel="stylesheet" href="main.css">      
+	</head>
+	<body>
+		<div id="container"></div>
 
-<head>
-  <title>three.js - misc - octree collisions</title>
-  <meta charset=utf-8 />
-  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-  <link type="text/css" rel="stylesheet" href="main.css">
-</head>
-
-<body>
-  <div id="container"></div>
-
-  <script type="importmap">
+		<script type="importmap">
 			{
 				"imports": {
 					"three": "../build/three.module.js",
@@ -20,1555 +18,1308 @@
 			}
 		</script>
 
-  <script type="module">
+		<script type="module">
 
-    import * as THREE from 'three';
+			import * as THREE from 'three';
 
-    let vrReloaded = false;
+			const textureLoader = new THREE.TextureLoader();
 
-    const textureLoader = new THREE.TextureLoader();
+			const smokeTexture = textureLoader.load('./textures/smoke.png');
+			const explosionTexture = textureLoader.load('./textures/explosion.png');
 
-    const smokeTexture = textureLoader.load('./textures/smoke.png');
-    const explosionTexture = textureLoader.load('./textures/explosion.png');
+      const TOTAL_OBJETIVO = 15; // Por ejemplo
+      let startTime = null;
+      let gameWon = false;
 
-    const TOTAL_OBJETIVO = 15; // Por ejemplo
-    let startTime = null;
-    let gameWon = false;
+      let victoryTimeout = null;
+      const RECORD_KEY = 'recordTiempoAviones';
 
-    let victoryTimeout = null;
-    const RECORD_KEY = 'recordTiempoAviones';
+			import Stats from 'three/addons/libs/stats.module.js';
 
+			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
+			import { Octree } from 'three/addons/math/Octree.js';
+			import { OctreeHelper } from 'three/addons/helpers/OctreeHelper.js';
 
-    import Stats from 'three/addons/libs/stats.module.js';
+			import { Capsule } from 'three/addons/math/Capsule.js';
 
-    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
-    import { Octree } from 'three/addons/math/Octree.js';
-    import { OctreeHelper } from 'three/addons/helpers/OctreeHelper.js';
+      import { VRButton } from 'three/addons/webxr/VRButton.js';
 
-    import { Capsule } from 'three/addons/math/Capsule.js';
+			const clock = new THREE.Clock();
 
-    import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+			const scene = new THREE.Scene();
+			scene.background = new THREE.Color(0xffa64d); // Naranja atardecer
+			scene.fog = new THREE.Fog(0xffa64d, 5, 100); // Inicia cerca y termina más lejos
 
-    import { VRButton } from 'three/addons/webxr/VRButton.js';
+			const camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 1000 );
+			camera.rotation.order = 'YXZ';
+      scene.add(camera);
 
+const vrUI = new THREE.Group();
+camera.add(vrUI);
+vrUI.position.set(0, -0.5, -2);
 
+// === ⏱️ Cronómetro ===
+const canvasTimer = document.createElement('canvas');
+canvasTimer.width = 256;
+canvasTimer.height = 64;
+const ctxTimer = canvasTimer.getContext('2d');
+ctxTimer.fillStyle = '#fff';
+ctxTimer.font = '30px sans-serif';
+ctxTimer.fillText('⏱️ 0.00 s', 10, 40);
 
+const texTimer = new THREE.CanvasTexture(canvasTimer);
+const matTimer = new THREE.MeshBasicMaterial({ map: texTimer, transparent: true });
+const geoTimer = new THREE.PlaneGeometry(1.5, 0.4);
+const meshTimer = new THREE.Mesh(geoTimer, matTimer);
 
-    const clock = new THREE.Clock();
+vrUI.add(meshTimer);
 
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xffa64d); // Naranja atardecer
-    scene.fog = new THREE.Fog(0xffa64d, 5, 100); // Inicia cerca y termina más lejos
+// === 🔥 Barra de calor ===
+const heatCanvas = document.createElement('canvas');
+heatCanvas.width = 256;
+heatCanvas.height = 32;
+const ctxHeat = heatCanvas.getContext('2d');
 
-
-
-    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.rotation.order = 'YXZ';
-    scene.add(camera);
-
-
-    const vrUI = new THREE.Group();
-    camera.add(vrUI);
-    vrUI.position.set(0, -0.5, -2);
-
-    // === ⏱️ Cronómetro ===
-    const canvasTimer = document.createElement('canvas');
-    canvasTimer.width = 256;
-    canvasTimer.height = 64;
-    const ctxTimer = canvasTimer.getContext('2d');
-    ctxTimer.fillStyle = '#fff';
-    ctxTimer.font = '30px sans-serif';
-    ctxTimer.fillText('⏱️ 0.00 s', 10, 40);
-
-    const texTimer = new THREE.CanvasTexture(canvasTimer);
-    const matTimer = new THREE.MeshBasicMaterial({ map: texTimer, transparent: true });
-    const geoTimer = new THREE.PlaneGeometry(1.5, 0.4);
-    const meshTimer = new THREE.Mesh(geoTimer, matTimer);
-
-
-    vrUI.add(meshTimer);
-
-    // === 🔥 Barra de calor ===
-    const heatCanvas = document.createElement('canvas');
-    heatCanvas.width = 256;
-    heatCanvas.height = 32;
-    const ctxHeat = heatCanvas.getContext('2d');
-
-    const texHeat = new THREE.CanvasTexture(heatCanvas);
-    const matHeat = new THREE.MeshBasicMaterial({ map: texHeat, transparent: true });
-    const geoHeat = new THREE.PlaneGeometry(1.5, 0.2);
-    const meshHeat = new THREE.Mesh(geoHeat, matHeat);
-    meshHeat.position.set(0, 0, 0);
-    vrUI.add(meshHeat);
-
-    // === 💣 Puntuación ===
-    const scoreCanvas = document.createElement('canvas');
-    scoreCanvas.width = 256;
-    scoreCanvas.height = 64;
-    const ctxScore = scoreCanvas.getContext('2d');
-    ctxScore.fillStyle = '#fff';
-    ctxScore.font = '22px sans-serif';
-    ctxScore.fillText('💣 0 🛩️ 0', 10, 40);
-
-    const texScore = new THREE.CanvasTexture(scoreCanvas);
-    const matScore = new THREE.MeshBasicMaterial({ map: texScore, transparent: true });
-    const geoScore = new THREE.PlaneGeometry(1.5, 0.4);
-    const meshScore = new THREE.Mesh(geoScore, matScore);
-    meshScore.position.set(0, -0.4, 0); // más abajo
-    vrUI.add(meshScore);
-
-    // === 🎉 Mensaje de Victoria VR ===
-    const victoryCanvas = document.createElement('canvas');
-    victoryCanvas.width = 512;
-    victoryCanvas.height = 256;
-    const ctxVictory = victoryCanvas.getContext('2d');
-    ctxVictory.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctxVictory.fillRect(0, 0, victoryCanvas.width, victoryCanvas.height);
-    ctxVictory.fillStyle = 'white';
-    ctxVictory.font = '28px sans-serif';
-    ctxVictory.textAlign = 'center';
-    ctxVictory.clearRect(0, 0, victoryCanvas.width, victoryCanvas.height);
-    ctxVictory.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctxVictory.fillRect(0, 0, victoryCanvas.width, victoryCanvas.height);
-    ctxVictory.fillStyle = 'white';
-    ctxVictory.font = '28px sans-serif';
-    ctxVictory.textAlign = 'center';
-
-
-
-
-    const texVictory = new THREE.CanvasTexture(victoryCanvas);
-    const matVictory = new THREE.MeshBasicMaterial({ map: texVictory, transparent: true });
-    const geoVictory = new THREE.PlaneGeometry(2, 1);
-    const meshVictory = new THREE.Mesh(geoVictory, matVictory);
-    meshVictory.position.set(0, 0, -2); // 2 metros al frente de la cámara
-    meshVictory.visible = false; // lo activamos solo cuando ganes
-
-    vrUI.add(meshVictory); // lo añadimos al HUD
-
-    // === 🔁 Botón de reinicio VR ===
-    const reiniciarCanvas = document.createElement('canvas');
-    reiniciarCanvas.width = 256;
-    reiniciarCanvas.height = 64;
-    const ctxBtn = reiniciarCanvas.getContext('2d');
-
-    ctxBtn.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctxBtn.fillRect(0, 0, 256, 64);
-    ctxBtn.fillStyle = 'white';
-    ctxBtn.font = '28px sans-serif';
-    ctxBtn.textAlign = 'center';
-    ctxBtn.fillText('🔁 Reiniciar', 128, 42);
-
-    const texBtn = new THREE.CanvasTexture(reiniciarCanvas);
-    const matBtn = new THREE.MeshBasicMaterial({ map: texBtn, transparent: true });
-    const geoBtn = new THREE.PlaneGeometry(1.2, 0.3);
-    const meshBtn = new THREE.Mesh(geoBtn, matBtn);
-
-    meshBtn.position.set(0, -0.2, 0); // debajo del mensaje de victoria
-    meshBtn.visible = false;
-    meshBtn.name = 'botonReiniciar';
-
-    vrUI.add(meshBtn);
-
-
-
-    // ✅ Reacomodar elementos del panel VR con posiciones correctas
-    meshTimer.position.set(0.6, 0.6, 0);     // centrado, arriba
-    meshHeat.position.set(-0.1, -0.2, 0);      // justo en el centro
-    meshScore.position.set(-0.1, -0.3, 0);    // centrado, abajo
-
-    meshTimer.scale.set(0.7, 0.7, 0.7);       // proporción más natural
-    meshHeat.scale.set(0.7, 0.15, 1);
-    meshScore.scale.set(0.7, 0.7, 0.7);
-
-
-
-
-
-
-    let cannon = null;
-
-    const gunLoader = new GLTFLoader().setPath('./models/gltf/');
-    let arma = null; // referencia global
-
-    gunLoader.load('cannon.glb', function (gltf) {
-      arma = gltf.scene;
-
-      // ✅ Aplica los valores finales que ajustaste
-      arma.position.set(0.35, -0.42, -0.33);
-      arma.rotation.set(
-        THREE.MathUtils.degToRad(31.32),
-        THREE.MathUtils.degToRad(-74.88),
-        THREE.MathUtils.degToRad(-17.28)
-      );
-      arma.scale.set(0.33561, 0.33561, 0.33561);
-
-      camera.add(arma);
-      arma.userData.originalPosition = arma.position.clone();
-
-
-      const gunLight = new THREE.PointLight(0xffffff, 0.8);
-      gunLight.position.set(0.1, 0, 0.2);
-      arma.add(gunLight);
-
-      console.log('✅ Arma colocada con valores finales');
-    });
-
-    function animarRetroceso() {
-      if (!arma) return;
-
-      // Evita múltiples retrocesos simultáneos
-      if (arma.userData.retrocediendo) return;
-
-      arma.userData.retrocediendo = true;
-
-      // Retrocede ligeramente en el eje Z
-      const retroceso = new THREE.Vector3(0, 0, 0.05);
-      arma.position.add(retroceso);
-
-      setTimeout(() => {
-        // Vuelve a la posición original
-        arma.position.copy(arma.userData.originalPosition);
-        arma.userData.retrocediendo = false;
-      }, 80); // duración del retroceso
-    }
-
-
-
-
-
-
-    // ✅ Listener y AudioLoader deben ir aquí
-    const listener = new THREE.AudioListener();
-    camera.add(listener);
-
-    const audioLoader = new THREE.AudioLoader();
-
-    const backgroundMusic = new THREE.Audio(listener);
-    audioLoader.load('sounds/ambient_music.mp3', buffer => {
-      backgroundMusic.setBuffer(buffer);
-      backgroundMusic.setLoop(true);
-      backgroundMusic.setVolume(0.1);
-      backgroundMusic.play();
-    });
-
-    // Luz ambiente suave para iluminar todo ligeramente
-    const ambientLight = new THREE.AmbientLight(0xffe0cc, 0.4); // color suave, intensidad baja
-    scene.add(ambientLight);
-
-    // Luz hemisférica más clara (cielo arriba y suelo abajo)
-    const hemisphereLight = new THREE.HemisphereLight(0xfff2e0, 0xff8a65, 1.2);
-    hemisphereLight.position.set(2, 1, 1);
-    scene.add(hemisphereLight);
-
-    // Luz direccional (simula el sol)
-    const directionalLight = new THREE.DirectionalLight(0xffddaa, 2.5);
-    directionalLight.position.set(10, 15, 5);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.camera.near = 0.01;
-    directionalLight.shadow.camera.far = 200;
-    directionalLight.shadow.mapSize.width = 1024;
-    directionalLight.shadow.mapSize.height = 1024;
-    directionalLight.shadow.camera.top = 30;
-    directionalLight.shadow.camera.bottom = -30;
-    directionalLight.shadow.radius = 4;
-    directionalLight.shadow.bias = -0.00006;
-    scene.add(directionalLight);
-
-
-    const container = document.getElementById('container');
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setAnimationLoop(animate);
-    renderer.xr.enabled = true;
-    document.body.appendChild(VRButton.createButton(renderer));
-
-
-
-    let joystickX = 0, joystickY = 0;
-
-    renderer.xr.addEventListener('sessionstart', () => {
-      const session = renderer.xr.getSession();
-
-      // 🟡 OCULTAR ELEMENTOS 2D AL ENTRAR A VR
-      document.getElementById('heatBar').style.display = 'none';
-      document.getElementById('scoreBoard').style.display = 'none';
-      document.getElementById('timeDisplay').style.display = 'none';
-
-      session.addEventListener('inputsourceschange', () => {
-        document.getElementById('heatBar').style.display = 'block';
-        document.getElementById('scoreBoard').style.display = 'block';
-        document.getElementById('timeDisplay').style.display = 'block';
-        for (const source of session.inputSources) {
-          if (source && source.gamepad) {
-            const gp = source.gamepad;
-
-            setInterval(() => {
-              joystickX = gp.axes[2] || 0;
-              joystickY = gp.axes[3] || 0;
-            }, 50);
-          }
-        }
-      });
-
-      session.addEventListener('select', () => {
-        if (meshBtn.visible) {
-          location.reload();
-        }
-      });
-
-      session.addEventListener('gamepadconnected', () => {
-        const checkButtons = () => {
-          const inputSources = session.inputSources;
-          inputSources.forEach(source => {
-            const gamepad = source.gamepad;
-            if (gamepad) {
-              gamepad.buttons.forEach(button => {
-                if (button.pressed && meshBtn.visible) {
-                  location.reload();
-                }
-              });
-            }
-          });
-          requestAnimationFrame(checkButtons);
-        };
-        checkButtons();
-      });
-
-    });
-
-
-
-
-    const controller = renderer.xr.getController(0);
-    scene.add(controller);
-
-    controller.addEventListener('selectstart', () => {
-      isMouseDown = true;
-    });
-
-    controller.addEventListener('selectend', () => {
-      isMouseDown = false;
-    });
-
-    const raycaster = new THREE.Raycaster();
-    const tempMatrix = new THREE.Matrix4();
-
-    controller.addEventListener('select', () => {
-      tempMatrix.identity().extractRotation(controller.matrixWorld);
-      raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-      raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-
-      const intersects = raycaster.intersectObjects([meshBtn]);
-
-      if (intersects.length > 0 && intersects[0].object.name === 'botonReiniciar') {
-        location.reload();
-      }
-    });
-
-
-
-
-
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.VSMShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    container.appendChild(renderer.domElement);
-
-    const stats = new Stats();
-    stats.domElement.style.position = 'absolute';
-    stats.domElement.style.top = '0px';
-    container.appendChild(stats.domElement);
-
-    const GRAVITY = 30;
-
-    const NUM_SPHERES = 100;
-    const SPHERE_RADIUS = 0.2;
-
-    const STEPS_PER_FRAME = 5;
-
-    const explosionFlashes = [];
-
-    const sphereGeometry = new THREE.IcosahedronGeometry(SPHERE_RADIUS, 5);
-    const sphereMaterial = new THREE.MeshLambertMaterial({ color: 0xff4444 });
-
-    const spheres = [];
-    let sphereIdx = 0;
-
-    for (let i = 0; i < NUM_SPHERES; i++) {
-
-      const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-      sphere.castShadow = true;
-      sphere.receiveShadow = true;
-
-      scene.add(sphere);
-
-      spheres.push({
-        mesh: sphere,
-        collider: new THREE.Sphere(new THREE.Vector3(0, - 100, 0), SPHERE_RADIUS),
-        velocity: new THREE.Vector3(),
-        exploding: false,
-        explodeTime: 0
-      });
-
-    }
-
-    const worldOctree = new Octree();
-
-    const playerCollider = new Capsule(new THREE.Vector3(5, 2.35, 5), // NUEVA POSICIÓN START
-      new THREE.Vector3(5, 3, 5),    // NUEVA POSICIÓN END
-      0.35
-    );
-
-    const playerVelocity = new THREE.Vector3();
-    const playerDirection = new THREE.Vector3();
-
-    let playerOnFloor = false;
-    let mouseTime = 0;
-
-    const keyStates = {};
-
-    let isMouseDown = false;
-    let lastShotTime = 0;
-    let heatLevel = 0;
-    let overheated = false;
-    const fireRate = 0.2; // segundos entre disparos
-    const maxHeat = 100;
-    const heatPerShot = 2;
-    const heatCooldownRate = 50; // unidades por segundo
-
-    let shootSound;
-    let shootBuffer = null;
-    audioLoader.load('sounds/shoot.mp3', buffer => {
-      shootBuffer = buffer;
-    });
-
-
-
-
-    const vector1 = new THREE.Vector3();
-    const vector2 = new THREE.Vector3();
-    const vector3 = new THREE.Vector3();
-
-    document.addEventListener('keydown', (event) => {
-
-      keyStates[event.code] = true;
-
-    });
-
-    document.addEventListener('keyup', (event) => {
-
-      keyStates[event.code] = false;
-
-    });
-
-    document.addEventListener('mousedown', () => {
-      isMouseDown = true;
-      document.body.requestPointerLock();
-    });
-
-    document.addEventListener('mouseup', () => {
-      isMouseDown = false;
-    });
-
-
-    document.body.addEventListener('mousemove', (event) => {
-
-      if (document.pointerLockElement === document.body) {
-
-        const euler = new THREE.Euler(0, 0, 0, 'YXZ');
-        euler.setFromQuaternion(camera.quaternion);
-
-        euler.y -= event.movementX / 500;
-        euler.x -= event.movementY / 500;
-        euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x)); // limitar pitch
-
-        camera.quaternion.setFromEuler(euler);
-
-
-      }
-
-    });
-
-    window.addEventListener('resize', onWindowResize);
-
-    function onWindowResize() {
-
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-
-      renderer.setSize(window.innerWidth, window.innerHeight);
-
-    }
-
-    function throwBall() {
-      if (gameWon) return;
-
-
-      if (startTime === null) {
-        startTime = performance.now();
-      }
-
-      let attempts = 0;
-      while (attempts < spheres.length) {
-        const sphere = spheres[sphereIdx];
-
-        // Si no está explotando, puede usarse
-        if (!sphere.exploding) {
-          sphere.mesh.visible = true;
-          sphere.mesh.scale.set(1, 1, 1);
-          sphere.mesh.material.color.set(0xff4444);
-
-          const shootDirection = new THREE.Vector3();
-          camera.getWorldDirection(shootDirection);
-
-          const origin = new THREE.Vector3();
-          camera.getWorldPosition(origin);
-          sphere.collider.center.copy(origin).addScaledVector(shootDirection, 1.0);
-
-
-          const impulse = 80 + 100 * (1 - Math.exp((mouseTime - performance.now()) * 0.001));
-          sphere.velocity.copy(shootDirection).multiplyScalar(impulse);  // ✅ usar shootDirection
-
-          sphere.velocity.addScaledVector(playerVelocity, 2);
-
-          sphereIdx = (sphereIdx + 1) % spheres.length;
-          if (shootBuffer && !overheated) {
-            const shot = new THREE.Audio(listener);
-            shot.setBuffer(shootBuffer);
-            shot.setVolume(0.35); // volumen reducido
-            shot.setPlaybackRate(0.9 + Math.random() * 0.2); // variación entre 0.9 y 1.1
-            shot.play();
-            animarRetroceso();
-
-          }
-
-
-
-          return;
-        }
-
-        sphereIdx = (sphereIdx + 1) % spheres.length;
-        attempts++;
-      }
-    }
-
-
-
-    function playerCollisions() {
-
-      const result = worldOctree.capsuleIntersect(playerCollider);
-
-      playerOnFloor = false;
-
-      if (result) {
-
-        playerOnFloor = result.normal.y > 0;
-
-        if (!playerOnFloor) {
-
-          playerVelocity.addScaledVector(result.normal, - result.normal.dot(playerVelocity));
-
-        }
-
-        if (result.depth >= 1e-10) {
-
-          playerCollider.translate(result.normal.multiplyScalar(result.depth));
-
-        }
-
-      }
-
-    }
-
-    function updatePlayer(deltaTime) {
-
-      let damping = Math.exp(- 4 * deltaTime) - 1;
-
-      if (!playerOnFloor) {
-
-        playerVelocity.y -= GRAVITY * deltaTime;
-
-        // small air resistance
-        damping *= 0.1;
-
-      }
-
-      playerVelocity.addScaledVector(playerVelocity, damping);
-
-      const deltaPosition = playerVelocity.clone().multiplyScalar(deltaTime);
-      playerCollider.translate(deltaPosition);
-
-      playerCollisions();
-
-      if (!renderer.xr.isPresenting) {
-        camera.position.copy(playerCollider.end);
-      }
-
-    }
-
-    function playerSphereCollision(sphere) {
-
-      const center = vector1.addVectors(playerCollider.start, playerCollider.end).multiplyScalar(0.5);
-
-      const sphere_center = sphere.collider.center;
-
-      const r = playerCollider.radius + sphere.collider.radius;
-      const r2 = r * r;
-
-      // approximation: player = 3 spheres
-
-      for (const point of [playerCollider.start, playerCollider.end, center]) {
-
-        const d2 = point.distanceToSquared(sphere_center);
-
-        if (d2 < r2) {
-
-          const normal = vector1.subVectors(point, sphere_center).normalize();
-          const v1 = vector2.copy(normal).multiplyScalar(normal.dot(playerVelocity));
-          const v2 = vector3.copy(normal).multiplyScalar(normal.dot(sphere.velocity));
-
-          playerVelocity.add(v2).sub(v1);
-          sphere.velocity.add(v1).sub(v2);
-
-          const d = (r - Math.sqrt(d2)) / 2;
-          sphere_center.addScaledVector(normal, - d);
-
-        }
-
-      }
-
-    }
-
-    function spheresCollisions() {
-
-      for (let i = 0, length = spheres.length; i < length; i++) {
-
-        const s1 = spheres[i];
-
-        for (let j = i + 1; j < length; j++) {
-
-          const s2 = spheres[j];
-
-          const d2 = s1.collider.center.distanceToSquared(s2.collider.center);
-          const r = s1.collider.radius + s2.collider.radius;
-          const r2 = r * r;
-
-          if (d2 < r2) {
-
-            const normal = vector1.subVectors(s1.collider.center, s2.collider.center).normalize();
-            const v1 = vector2.copy(normal).multiplyScalar(normal.dot(s1.velocity));
-            const v2 = vector3.copy(normal).multiplyScalar(normal.dot(s2.velocity));
-
-            s1.velocity.add(v2).sub(v1);
-            s2.velocity.add(v1).sub(v2);
-
-            const d = (r - Math.sqrt(d2)) / 2;
-
-            s1.collider.center.addScaledVector(normal, d);
-            s2.collider.center.addScaledVector(normal, - d);
-
-          }
-
-        }
-
-      }
-
-    }
-
-    function updateSpheres(deltaTime) {
-      spheres.forEach(sphere => {
-        // Si está explotando, ejecutar la animación de explosión
-        if (sphere.exploding) {
-          sphere.explodeTime += deltaTime;
-
-          const scale = 1 + 2 * Math.sin(Math.PI * Math.min(sphere.explodeTime, 0.2) * 5);
-          sphere.mesh.scale.set(scale, scale, scale);
-
-          sphere.mesh.material.color.set(0xffaa00);
-
-          if (sphere.explodeTime > 0.2) {
-            sphere.mesh.visible = false;
-            sphere.collider.center.set(0, -100, 0);
-            sphere.exploding = false;
-            sphere.mesh.scale.set(1, 1, 1);
-            sphere.mesh.material.color.set(0xff4444);
-          }
-
-          return; // No mover ni procesar colisiones si está explotando
-        }
-
-        // Mover esfera
-        sphere.collider.center.addScaledVector(sphere.velocity, deltaTime);
-
-        for (const avion of aviones) {
-          if (avion.isFalling) continue;
-
-          const avionPos = avion.mesh.position;
-          const distancia = avionPos.distanceTo(sphere.collider.center);
-
-          if (distancia < 2.0) { // Ajusta el radio de colisión si es necesario
-            avion.health -= 1;
-            sphere.exploding = true;
-            sphere.explodeTime = 0;
-            if (avion.health <= 0) {
-
-              if (avion.curvo) {
-                avionesCurvosEliminados++;
-                document.getElementById('curvosEliminados').innerText = avionesCurvosEliminados;
-              } else {
-                avionesRectosEliminados++;
-                document.getElementById('rectosEliminados').innerText = avionesRectosEliminados;
-              }
-
-              const totalDestruidos = avionesRectosEliminados + avionesCurvosEliminados;
-
-              // Solo mostrar victoria si se alcanzó el objetivo y no se había ganado antes
-              if (totalDestruidos >= TOTAL_OBJETIVO && !gameWon) {
-                gameWon = true;  // MARCA JUEGO COMO GANADO
-
-                // === 🎉 Actualizar VR Victory UI ===
-                ctxVictory.clearRect(0, 0, victoryCanvas.width, victoryCanvas.height);
-                ctxVictory.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                ctxVictory.fillRect(0, 0, victoryCanvas.width, victoryCanvas.height);
-                ctxVictory.fillStyle = 'white';
-                ctxVictory.font = '28px sans-serif';
-                ctxVictory.textAlign = 'center';
-                ctxVictory.fillText(`🎉 ¡Ganaste en ${elapsedSeconds}s!`, 256, 100);
-
-                if (nuevoRecord) {
-                  ctxVictory.fillText(`🏆 ¡Nuevo récord!`, 256, 150);
-                } else {
-                  ctxVictory.fillText(`⏱️ Récord: ${recordAnterior}s`, 256, 150);
-                }
-
-                texVictory.needsUpdate = true;
-                meshVictory.visible = true;
-                meshBtn.visible = true;
-
-                // NO usar setTimeout para ocultar UI, déjala visible hasta reinicio
-              }
-
-
-              // Resto del código para que el avión caiga
-              avion.isFalling = true;
-
-              let horizontalDirection = new THREE.Vector3();
-              let velocidadReal = 0;
-
-              if (avion.curvo && avion.mesh.userData.angle !== undefined) {
-                const angle = avion.mesh.userData.angle;
-
-                const tangent = new THREE.Vector3(
-                  -Math.sin(angle),
-                  0,
-                  Math.cos(angle)
-                ).normalize();
-
-                const radius = avion.mesh.userData.radius;
-                const angularSpeed = avion.mesh.userData.speedCurvo * 4;
-                velocidadReal = radius * angularSpeed;
-
-                horizontalDirection.copy(tangent);
-
-                avion.initialQuaternion = avion.mesh.quaternion.clone();
-              } else {
-                horizontalDirection.set(0, 0, 1);
-                velocidadReal = avion.speedRecto * 100;
-              }
-
-              avion.fallVelocity = horizontalDirection.clone().multiplyScalar(velocidadReal);
-              avion.fallVelocity.y = -1.5;
-              avion.verticalSpeed = -1.5;
-            }
-
-
-
-
-
-
-          }
-        }
-
-
-        // Colisión con el mundo
-        const result = worldOctree.sphereIntersect(sphere.collider);
-
-        if (result) {
-          sphere.velocity.set(0, 0, 0);
-          sphere.collider.center.add(result.normal.multiplyScalar(result.depth));
-          sphere.exploding = true;
-          sphere.explodeTime = 0;
-
-          // Crear flash de luz
-          const flash = new THREE.PointLight(0xffaa00, 8, 6); // color, intensidad, distancia
-          flash.position.copy(sphere.collider.center);
-          scene.add(flash);
-
-          // Guardar el flash para eliminarlo luego
-          explosionFlashes.push({ light: flash, time: 0 });
-
-        } else {
-          sphere.velocity.y -= GRAVITY * deltaTime;
-        }
-
-        // Frenado
-        const damping = Math.exp(-1.5 * deltaTime) - 1;
-        sphere.velocity.addScaledVector(sphere.velocity, damping);
-
-        playerSphereCollision(sphere);
-      });
-
-      spheresCollisions();
-
-      // Actualizar posición visual de cada esfera
-      for (const sphere of spheres) {
-        sphere.mesh.position.copy(sphere.collider.center);
-      }
-
-      // Actualizar y eliminar flashes de explosión
-      for (let i = explosionFlashes.length - 1; i >= 0; i--) {
-        const flash = explosionFlashes[i];
-        flash.time += deltaTime;
-
-        if (flash.time > 0.2) {
-          scene.remove(flash.light);
-          explosionFlashes.splice(i, 1);
-        }
-      }
-
-    }
-
-
-    function getForwardVector() {
-
-      camera.getWorldDirection(playerDirection);
-      playerDirection.y = 0;
-      playerDirection.normalize();
-
-      return playerDirection;
-
-    }
-
-    function getSideVector() {
-
-      camera.getWorldDirection(playerDirection);
-      playerDirection.y = 0;
-      playerDirection.normalize();
-      playerDirection.cross(camera.up);
-
-      return playerDirection;
-
-    }
-
-    function controls(deltaTime) {
-
-      if (gameWon) return;
-
-
-      // gives a bit of air control
-      const speedDelta = deltaTime * (playerOnFloor ? 25 : 8);
-
-      if (keyStates['KeyW']) {
-
-        playerVelocity.add(getForwardVector().multiplyScalar(speedDelta));
-
-      }
-
-      if (keyStates['KeyS']) {
-
-        playerVelocity.add(getForwardVector().multiplyScalar(- speedDelta));
-
-      }
-
-      if (keyStates['KeyA']) {
-
-        playerVelocity.add(getSideVector().multiplyScalar(- speedDelta));
-
-      }
-
-      if (keyStates['KeyD']) {
-
-        playerVelocity.add(getSideVector().multiplyScalar(speedDelta));
-
-      }
-
-      if (playerOnFloor) {
-
-        if (keyStates['Space']) {
-
-          playerVelocity.y = 15;
-
-        }
-
-      }
-
-      // Movimiento con joystick VR
-      playerVelocity.add(getForwardVector().multiplyScalar(joystickY * deltaTime * 20));
-      playerVelocity.add(getSideVector().multiplyScalar(joystickX * deltaTime * 20));
-
-
-    }
-
-
-
-    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-
-    const dracoLoader = new DRACOLoader();
-    dracoLoader.setDecoderPath('./jsm/libs/draco/');
-
-    const loader = new GLTFLoader().setPath('./models/gltf/');
-    loader.setDRACOLoader(dracoLoader);
-
-
-    const loadingDiv = document.createElement('div');
-    loadingDiv.innerText = 'Cargando mapa...';
-    loadingDiv.style.position = 'absolute';
-    loadingDiv.style.top = '50%';
-    loadingDiv.style.left = '50%';
-    loadingDiv.style.transform = 'translate(-50%, -50%)';
-    loadingDiv.style.color = 'white';
-    loadingDiv.style.fontSize = '24px';
-    document.body.appendChild(loadingDiv);
-
-
-    loader.load('battlefield.glb', (gltf) => {
-
-      scene.add(gltf.scene);
-      worldOctree.fromGraphNode(gltf.scene);
-
-      gltf.scene.traverse(child => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-
-          if (child.material.map) {
-            child.material.map.anisotropy = 4;
-          }
-        }
-      });
-
-
-      //const helper = new OctreeHelper(worldOctree);
-      helper.visible = false;
-      //scene.add(helper);
-
-      const gui = new GUI({ width: 200 });
-      gui.add({ debug: false }, 'debug').onChange(val => helper.visible = val);
-
-      // ✅ Eliminar el mensaje tras carga exitosa
-      removeLoading();
-    },
-      undefined,
-      (error) => {
-        console.error("❌ Error cargando el mapa:", error);
-
-        // ❗ También quitamos el mensaje si falla
-        removeLoading();
-      }
-    );
-
-    // Función segura para eliminar el mensaje
-    function removeLoading() {
-      if (document.body.contains(loadingDiv)) {
-        loadingDiv.remove();
-      }
-
-      // ✅ Mostrar mensaje de éxito
-      const successDiv = document.createElement('div');
-      successDiv.innerText = 'Mapa cargado con éxito';
-      successDiv.style.position = 'absolute';
-      successDiv.style.top = '50%';
-      successDiv.style.left = '50%';
-      successDiv.style.transform = 'translate(-50%, -50%)';
-      successDiv.style.color = 'white';
-      successDiv.style.fontSize = '24px';
-      successDiv.style.background = 'rgba(0, 0, 0, 0.6)';
-      successDiv.style.padding = '10px 20px';
-      successDiv.style.borderRadius = '8px';
-      successDiv.style.zIndex = '9999';
-      document.body.appendChild(successDiv);
-
-      setTimeout(() => {
-        if (document.body.contains(successDiv)) {
-          successDiv.remove();
-        }
-      }, 2500);
-    }
-
-    const avionLoader = new GLTFLoader().setPath('./models/gltf/');
-    avionLoader.setDRACOLoader(dracoLoader);
-
-    const aviones = [];
-
-    let avionesRectosEliminados = 0;
-    let avionesCurvosEliminados = 0;
-
-
-    function crearAvion() {
-      avionLoader.load('avion.glb', (gltf) => {
-        const avion = gltf.scene.clone();
-
-        const x = Math.random() * 80 - 40;
-        const y = 8 + Math.random() * 3; // Altura un poco más baja
-        const z = -100; // Muy lejos, para que aparezca en la niebla
-
-        avion.position.set(x, y, z);
-        avion.rotation.y = 0; // Volar hacia adelante
-
-        avion.scale.set(1, 1, 1);
-        avion.traverse(child => {
-          if (child.isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-            child.frustumCulled = false;
-          }
-        });
-
-        scene.add(avion);
-        const engineSound = new THREE.PositionalAudio(listener);
-        audioLoader.load('sounds/plane_engine.mp3', buffer => {
-          engineSound.setBuffer(buffer);
-          engineSound.setLoop(true);
-          engineSound.setVolume(4);
-          engineSound.setRefDistance(8);
-          engineSound.setRolloffFactor(2);
-          engineSound.setDistanceModel('exponential');
-
-          // 🎚️ Pitch aleatorio entre 0.95 y 1.05
-          engineSound.setPlaybackRate(0.95 + Math.random() * 0.1);
-
-          // ⏱️ Retardo aleatorio hasta 2 segundos
-          setTimeout(() => {
-            engineSound.play();
-          }, Math.random() * 2000);
-        });
-
-        avion.add(engineSound);
-
-        aviones.push({
-          mesh: avion,
-          speedRecto: 0.7,
-          curvo: false,
-          health: 3,
-          isFalling: false
-        });
-
-      });
-    }
-
-    // Crear varios aviones iniciales
-    for (let i = 0; i < 5; i++) {
-      crearAvion();
-    }
-
-    function crearAvionCurvo() {
-      avionLoader.load('avion_curvo.glb', (gltf) => {
-        const avion = gltf.scene.clone();
-
-        const angle = Math.random() * 2 * Math.PI;
-        const radius = 60 + Math.random() * 20;
-        const y = 8 + Math.random() * 5;
-
-        avion.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
-        // Corrige orientación base
-
-        avion.scale.set(1, 1, 1);
-        const speedCurvo = 0.4 + Math.random() * 0.1;
-
-        avion.userData = {
-          angle,
-          radius,
-          speedCurvo,
-          heightBase: y,
-          heightOffset: Math.random() * 2
-        };
-
-
-
-        avion.traverse(child => {
-          if (child.isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-            child.frustumCulled = false;
-          }
-        });
-
-        scene.add(avion);
-        const engineSound = new THREE.PositionalAudio(listener);
-        audioLoader.load('sounds/plane_engine.mp3', buffer => {
-          engineSound.setBuffer(buffer);
-          engineSound.setLoop(true);
-          engineSound.setVolume(6);
-          engineSound.setRefDistance(8);
-          engineSound.setRolloffFactor(2);
-          engineSound.setDistanceModel('exponential');
-
-          // 🎚️ Pitch aleatorio entre 0.95 y 1.05
-          engineSound.setPlaybackRate(0.95 + Math.random() * 0.1);
-
-          // ⏱️ Retardo aleatorio hasta 2 segundos
-          setTimeout(() => {
-            engineSound.play();
-          }, Math.random() * 2000);
-        });
-
-        avion.add(engineSound);
-
-
-        aviones.push({
-          mesh: avion,
-          speedCurvo,
-          curvo: true,
-          health: 3,
-          isFalling: false
-        });
-
-
-      });
-    }
-
-    // Crear aviones curvos
-    for (let i = 0; i < 3; i++) {
-      crearAvionCurvo();
-    }
-
-    function teleportPlayerIfOob() {
-
-      if (camera.position.y <= - 25) {
-
-        playerCollider.start.set(5, 2.35, 5);
-        playerCollider.end.set(5, 3, 5);
-        camera.position.copy(playerCollider.end);
-
-        camera.position.copy(playerCollider.end);
-        camera.rotation.set(0, 0, 0);
-
-      }
-
-    }
-
-
-    function moverAvionCurvo(avion, deltaTime) {
-      const data = avion.mesh.userData;
-      data.angle += data.speed * deltaTime * 4;
-      data.radius += 0.1 * deltaTime;
-
-      const x = Math.cos(data.angle) * data.radius;
-      const z = Math.sin(data.angle) * data.radius;
-      const y = data.heightBase + Math.sin(clock.elapsedTime * 0.5 + data.heightOffset) * 1.5;
-
-      // Solo mover sin tocar rotación
-      avion.mesh.position.set(x, y, z);
-
-      // Elimina rotación existente (para que no se herede nada)
-      avion.mesh.rotation.set(0, 0, 0);
-      avion.mesh.quaternion.identity();
-    }
-
-
-
-
-
-
-
-
-
-
-    function moverAvionRecto(avion, deltaTime, i) {
-      avion.mesh.position.z += avion.speed * 100 * deltaTime;
-      avion.mesh.position.y += Math.sin(clock.elapsedTime * 0.5 + i) * 0.002;
-
-      if (!avion.isFalling && avion.mesh.position.z > 100) {
-        if (avion.curvo) {
-          avionesCurvosEliminados++;
-          document.getElementById('curvosEliminados').innerText = avionesCurvosEliminados;
-        } else {
-          avionesRectosEliminados++;
-          document.getElementById('rectosEliminados').innerText = avionesRectosEliminados;
-        }
-
-        scene.remove(avion.mesh);
-        aviones.splice(i, 1);
-        crearAvion();
-      }
-
-    }
-
-    function actualizarCaidaAvion(avion, deltaTime, i) {
-      avion.mesh.position.addScaledVector(avion.fallVelocity, deltaTime);
-      avion.fallVelocity.y -= GRAVITY * deltaTime * 0.5;
-
-      // Rotación al caer
-      avion.mesh.rotation.x += deltaTime * 4;
-      avion.mesh.rotation.z += deltaTime * 2;
-
-      if (avion.mesh.position.y < 0.5) {
-        // Explosión visual
-        const flash = new THREE.PointLight(0xff5500, 10, 8);
-        flash.position.copy(avion.mesh.position);
-        scene.add(flash);
-        explosionFlashes.push({ light: flash, time: 0 });
-
-        scene.remove(avion.mesh);
-        aviones.splice(i, 1);
-      }
-    }
-
-
-    function animate() {
-      const deltaTime = Math.min(0.05, clock.getDelta()) / STEPS_PER_FRAME;
-
-      if (gameWon) {
-        // Solo renderizar la escena y actualizar stats (sin lógica ni eliminar objetos)
-        renderer.render(scene, camera);
-        stats.update();
-
-        // Opcional: pintar pequeño cuadro verde en UI para confirmar que sigue activo
-        ctxScore.clearRect(0, 0, scoreCanvas.width, scoreCanvas.height);
-        ctxScore.fillStyle = 'lime';
-        ctxScore.fillRect(0, 0, 50, 50);
-        texScore.needsUpdate = true;
-
-        return; // Salir para no hacer nada más
-      }
-
-      for (let i = 0; i < STEPS_PER_FRAME; i++) {
-        controls(deltaTime);
-        updatePlayer(deltaTime);
-        updateSpheres(deltaTime);
-        teleportPlayerIfOob();
-      }
-
-      // 🔥 Disparo continuo y sobrecalentamiento
-      if (!gameWon && isMouseDown && !overheated) {
-        const now = performance.now() / 1000;
-        if (now - lastShotTime >= fireRate) {
-          throwBall();
-          lastShotTime = now;
-          heatLevel += heatPerShot;
-          if (heatLevel >= maxHeat) {
-            overheated = true;
-            heatLevel = maxHeat;
-          }
-        }
-      } else {
-        // 🧊 Enfriamiento
-        heatLevel -= heatCooldownRate * deltaTime;
-        if (heatLevel <= 0) {
-          overheated = false;
-          heatLevel = 0;
-        }
-      }
-
-
-      renderer.render(scene, camera);
-      stats.update();
-
-      for (let i = aviones.length - 1; i >= 0; i--) {
-        const avion = aviones[i];
-
-
-
-        if (avion.isFalling) {
-          // Inicializar velocidad vertical si no existe
-          if (avion.verticalSpeed === undefined) avion.verticalSpeed = -1.5;
-
-          // Inicializar banking si no existe (esto se guarda en el momento de caer)
-          if (avion.initialQuaternion) {
-            avion.mesh.quaternion.copy(avion.initialQuaternion);
-
-            // Añadir rotación tipo caída descontrolada
-            avion.mesh.rotateX(deltaTime * 2.5);
-            avion.mesh.rotateZ(deltaTime * 1.5);
-          } else {
-            // Si no tiene banking guardado, usar rotación básica
-            avion.mesh.rotation.x += deltaTime * 2.5;
-            avion.mesh.rotation.z += deltaTime * 1.5;
-          }
-
-          // Calcular movimiento horizontal
-          const movement = avion.fallVelocity.clone();
-          movement.y = avion.verticalSpeed; // usar componente vertical actual
-
-          // Aplicar movimiento
-          avion.mesh.position.addScaledVector(movement, deltaTime);
-
-          // Aumentar caída vertical
-          avion.verticalSpeed -= GRAVITY * deltaTime * 0.7;
-
-          // Humo en caída
-          if (!avion.smokeTimer) avion.smokeTimer = 0;
-          avion.smokeTimer += deltaTime;
-          if (avion.smokeTimer > 0.03) {
-            avion.smokeTimer = 0;
-
-            const smokeGroup = new THREE.Group();
-            for (let j = 0; j < 5; j++) {
-              const material = new THREE.SpriteMaterial({
-                map: smokeTexture,
-                transparent: true,
-                opacity: 0.5 + Math.random() * 0.2,
-                depthWrite: false,
-                blending: THREE.NormalBlending
-              });
-
-              const sprite = new THREE.Sprite(material);
-              const scale = 1.5 + Math.random() * 1.2;
-              sprite.scale.set(scale, scale, scale);
-
-              const offset = new THREE.Vector3(
-                (Math.random() - 0.5) * 2,
-                Math.random() * 1.5,
-                (Math.random() - 0.5) * 2
-              );
-              sprite.position.copy(offset);
-              material.rotation = Math.random() * Math.PI * 2;
-
-              smokeGroup.add(sprite);
-            }
-
-            smokeGroup.position.copy(avion.mesh.position.clone());
-            scene.add(smokeGroup);
-
-            explosionFlashes.push({
-              light: smokeGroup,
-              time: 0,
-              type: 'smokeGroup',
-              velocity: new THREE.Vector3(
-                (Math.random() - 0.5) * 0.05,
-                0.08 + Math.random() * 0.05,
-                (Math.random() - 0.5) * 0.05
-              )
-            });
-          }
-
-          // Detectar impacto con el suelo
-          if (avion.mesh.position.y < -7) {
-            const explosionMaterial = new THREE.SpriteMaterial({
-              map: explosionTexture,
-              transparent: true,
-              opacity: 1,
-              depthWrite: false
-            });
-            const explosion = new THREE.Sprite(explosionMaterial);
-            explosion.scale.set(3, 3, 3);
-            explosion.position.copy(avion.mesh.position);
-            scene.add(explosion);
-
-            const flash = new THREE.PointLight(0xff5500, 10, 8);
-            flash.position.copy(avion.mesh.position);
-            scene.add(flash);
-
-            explosionFlashes.push({ light: explosion, time: 0, type: 'explosion' });
-            explosionFlashes.push({ light: flash, time: 0, type: 'light' });
-
-
-            scene.remove(avion.mesh);
-            aviones.splice(i, 1);
-
-            // 👇 AÑADIR NUEVO AVIÓN
-            if (avion.curvo) {
-              crearAvionCurvo();
-            } else {
-              crearAvion();
-            }
-          }
-
-
-
-          continue; // Saltar a siguiente avión
-        }
-
-
-
-
-
-
-
-
-        // Si NO está cayendo, seguir comportamiento normal
-        if (avion.curvo) {
-          const data = avion.mesh.userData;
-          data.angle += avion.speedCurvo * deltaTime * 4;
-          data.radius += 0.1 * deltaTime;
-
-          const x = Math.cos(data.angle) * data.radius;
-          const z = Math.sin(data.angle) * data.radius;
-          const y = data.heightBase + Math.sin(clock.elapsedTime * 0.5 + data.heightOffset) * 1.5;
-
-          const position = new THREE.Vector3(x, y, z);
-          const tangent = new THREE.Vector3(
-            -Math.sin(data.angle),
-            0,
-            Math.cos(data.angle)
-          ).normalize();
-
-          const up = new THREE.Vector3(0, 1, 0);
-          const side = new THREE.Vector3().crossVectors(up, tangent).normalize();
-          const correctedUp = new THREE.Vector3().crossVectors(tangent, side).normalize();
-
-          const m = new THREE.Matrix4();
-          m.makeBasis(side, correctedUp, tangent); // tangent = forward
-
-          avion.mesh.position.copy(position);
-          avion.mesh.setRotationFromMatrix(m);
-
-          // ✈️ Banking realista (opcional)
-          avion.mesh.rotateZ(Math.sin(data.angle * 2) * 0.3);
-        }
-
-        else {
-          avion.mesh.position.z += avion.speedRecto * 100 * deltaTime;
-          avion.mesh.position.y += Math.sin(clock.elapsedTime * 0.5 + i) * 0.002;
-
-          if (!avion.isFalling && avion.mesh.position.z > 100) {
-            scene.remove(avion.mesh);
-            aviones.splice(i, 1);
-            crearAvion();
-          }
-
-        }
-      }
-
-      for (let i = explosionFlashes.length - 1; i >= 0; i--) {
-        const e = explosionFlashes[i];
-        e.time += deltaTime;
-
-        if (e.type === 'smoke') {
-          e.light.position.addScaledVector(e.velocity, deltaTime); // se mueve hacia arriba
-          e.light.material.opacity -= deltaTime * 0.15; // más lento
-          e.light.scale.multiplyScalar(1 + deltaTime * 0.1);
-          if (e.light.material.opacity <= 0) {
-            scene.remove(e.light);
-            explosionFlashes.splice(i, 1);
-          }
-        } else if (e.type === 'smokeGroup') {
-          let fullyFaded = true;
-
-          e.light.children.forEach(sprite => {
-            sprite.material.opacity -= deltaTime * 0.015;
-            sprite.material.rotation += deltaTime * 0.5;
-            sprite.scale.multiplyScalar(1 + deltaTime * 0.03);
-            if (sprite.material.opacity > 0.01) fullyFaded = false;
-          });
-
-          if (fullyFaded) {
-            e.light.children.forEach(sprite => scene.remove(sprite));
-            scene.remove(e.light);
-            explosionFlashes.splice(i, 1);
-          }
-          e.light.position.addScaledVector(e.velocity, deltaTime);
-
-        }
-
-
-
-        else if (e.type === 'explosion') {
-          e.light.material.opacity -= deltaTime * 0.07; // más lenta
-          e.light.scale.multiplyScalar(1 + deltaTime * 2.5); // crecimiento moderado
-          if (e.light.material.opacity <= 0) {
-            scene.remove(e.light);
-            explosionFlashes.splice(i, 1);
-          }
-        } else if (e.type === 'light') {
-          if (e.time > 4) { // luz dura más
-            scene.remove(e.light);
-            explosionFlashes.splice(i, 1);
-          }
-        }
-      }
-
-      const heatLevelDiv = document.getElementById('heatLevel')
-      const heatPercent = (heatLevel / maxHeat) * 100;
-      heatLevelDiv.style.width = `${heatPercent}%`;
-
-      // Cambiar color según el porcentaje de calor
-      if (heatPercent > 80) {
-        heatLevelDiv.style.background = 'red';
-      } else if (heatPercent > 50) {
-        heatLevelDiv.style.background = 'orange';
-      } else if (heatPercent > 20) {
-        heatLevelDiv.style.background = 'yellow';
-      } else {
-        heatLevelDiv.style.background = 'limegreen';
-      }
-
-      // Mostrar u ocultar advertencia de sobrecalentamiento
-      const warning = document.getElementById('overheatWarning');
-      if (overheated) {
-        warning.style.display = 'block';
-      } else {
-        warning.style.display = 'none';
-      }
-
-      if (startTime !== null) {
-        const now = performance.now();
-        const elapsedSeconds = ((now - startTime) / 1000).toFixed(2);
-
-        // UI tradicional
-        document.getElementById('timeElapsed').innerText = elapsedSeconds;
-
-        // Actualizar canvas para UI VR
-        // 🕒 Actualizar cronómetro VR
-        ctxTimer.clearRect(0, 0, canvasTimer.width, canvasTimer.height);
-        ctxTimer.fillText(`⏱️ ${elapsedSeconds}s`, 10, 40);
-        texTimer.needsUpdate = true;
-
-        // 🔥 Actualizar barra de calor VR
-        ctxHeat.clearRect(0, 0, heatCanvas.width, heatCanvas.height);
-        ctxHeat.fillStyle = '#222';
-        ctxHeat.fillRect(0, 0, 256, 32);
-
-        ctxHeat.fillStyle = heatPercent > 80 ? 'red' :
-          heatPercent > 50 ? 'orange' :
-            heatPercent > 20 ? 'yellow' : 'limegreen';
-        ctxHeat.fillRect(0, 0, heatPercent * 2.56, 32); // escala a 256 px
-        texHeat.needsUpdate = true;
-
-        // 💣 Actualizar puntuación VR
-        ctxScore.clearRect(0, 0, scoreCanvas.width, scoreCanvas.height);
-        ctxScore.fillText(`💣 ${avionesRectosEliminados} 🛩️ ${avionesCurvosEliminados}`, 10, 40);
-        texScore.needsUpdate = true;
-
-      }
-
-      if (renderer.xr.isPresenting && meshBtn.visible && !vrReloaded) {
+const texHeat = new THREE.CanvasTexture(heatCanvas);
+const matHeat = new THREE.MeshBasicMaterial({ map: texHeat, transparent: true });
+const geoHeat = new THREE.PlaneGeometry(1.5, 0.2);
+const meshHeat = new THREE.Mesh(geoHeat, matHeat);
+meshHeat.position.set(0, 0, 0);
+vrUI.add(meshHeat);
+
+// === 💣 Puntuación ===
+const scoreCanvas = document.createElement('canvas');
+scoreCanvas.width = 256;
+scoreCanvas.height = 64;
+const ctxScore = scoreCanvas.getContext('2d');
+ctxScore.fillStyle = '#fff';
+ctxScore.font = '22px sans-serif';
+ctxScore.fillText('💣 0 🛩️ 0', 10, 40);
+
+const texScore = new THREE.CanvasTexture(scoreCanvas);
+const matScore = new THREE.MeshBasicMaterial({ map: texScore, transparent: true });
+const geoScore = new THREE.PlaneGeometry(1.5, 0.4);
+const meshScore = new THREE.Mesh(geoScore, matScore);
+meshScore.position.set(0, -0.4, 0); // más abajo
+vrUI.add(meshScore);
+
+// ✅ Reacomodar elementos del panel VR con posiciones correctas
+meshTimer.position.set(0.6, 0.6, 0);     // centrado, arriba
+meshHeat.position.set(-0.1, -0.2, 0);      // justo en el centro
+meshScore.position.set(-0.1, -0.3, 0);    // centrado, abajo
+
+meshTimer.scale.set(0.7, 0.7, 0.7);       // proporción más natural
+meshHeat.scale.set(0.7, 0.15, 1);        
+meshScore.scale.set(0.7, 0.7, 0.7);       
+
+let cannon = null;
+
+const gunLoader = new GLTFLoader().setPath('./models/gltf/');
+let arma = null; // referencia global
+
+gunLoader.load('cannon.glb', function (gltf) {
+  arma = gltf.scene;
+
+  // ✅ Aplica los valores finales que ajustaste
+  arma.position.set(0.35, -0.42, -0.33);
+  arma.rotation.set(
+    THREE.MathUtils.degToRad(31.32),
+    THREE.MathUtils.degToRad(-74.88),
+    THREE.MathUtils.degToRad(-17.28)
+  );
+  arma.scale.set(0.33561, 0.33561, 0.33561);
+
+  camera.add(arma);
+  arma.userData.originalPosition = arma.position.clone();
+
+  const gunLight = new THREE.PointLight(0xffffff, 0.8);
+  gunLight.position.set(0.1, 0, 0.2);
+  arma.add(gunLight);
+
+  console.log('✅ Arma colocada con valores finales');
+});
+
+function animarRetroceso() {
+  if (!arma) return;
+
+  // Evita múltiples retrocesos simultáneos
+  if (arma.userData.retrocediendo) return;
+
+  arma.userData.retrocediendo = true;
+
+  // Retrocede ligeramente en el eje Z
+  const retroceso = new THREE.Vector3(0, 0, 0.05);
+  arma.position.add(retroceso);
+
+  setTimeout(() => {
+    // Vuelve a la posición original
+    arma.position.copy(arma.userData.originalPosition);
+    arma.userData.retrocediendo = false;
+  }, 80); // duración del retroceso
+}
+
+// ✅ Listener y AudioLoader deben ir aquí
+const listener = new THREE.AudioListener();
+camera.add(listener);
+
+const audioLoader = new THREE.AudioLoader();
+
+const backgroundMusic = new THREE.Audio(listener);
+audioLoader.load('sounds/ambient_music.mp3', buffer => {
+  backgroundMusic.setBuffer(buffer);
+  backgroundMusic.setLoop(true);
+  backgroundMusic.setVolume(0.1);
+  backgroundMusic.play();
+});
+
+// Luz ambiente suave para iluminar todo ligeramente
+const ambientLight = new THREE.AmbientLight(0xffe0cc, 0.4); // color suave, intensidad baja
+scene.add(ambientLight);
+
+// Luz hemisférica más clara (cielo arriba y suelo abajo)
+const hemisphereLight = new THREE.HemisphereLight(0xfff2e0, 0xff8a65, 1.2);
+hemisphereLight.position.set(2, 1, 1);
+scene.add(hemisphereLight);
+
+// Luz direccional (simula el sol)
+const directionalLight = new THREE.DirectionalLight(0xffddaa, 2.5);
+directionalLight.position.set(10, 15, 5);
+directionalLight.castShadow = true;
+directionalLight.shadow.camera.near = 0.01;
+directionalLight.shadow.camera.far = 200;
+directionalLight.shadow.mapSize.width = 1024;
+directionalLight.shadow.mapSize.height = 1024;
+directionalLight.shadow.camera.top = 30;
+directionalLight.shadow.camera.bottom = -30;
+directionalLight.shadow.radius = 4;
+directionalLight.shadow.bias = -0.00006;
+scene.add(directionalLight);
+
+			const container = document.getElementById( 'container' );
+
+			const renderer = new THREE.WebGLRenderer( { antialias: true } );
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.setAnimationLoop( animate );
+      renderer.xr.enabled = true;
+      document.body.appendChild(VRButton.createButton(renderer));
+
+      let joystickX = 0, joystickY = 0;
+
+      renderer.xr.addEventListener('sessionstart', () => {
         const session = renderer.xr.getSession();
-        session.inputSources.forEach(source => {
-          const gp = source.gamepad;
-          if (gp) {
-            for (let b of gp.buttons) {
-              if (b.pressed) {
-                vrReloaded = true;
-                location.reload();
-              }
+
+          // 🟡 OCULTAR ELEMENTOS 2D AL ENTRAR A VR
+          document.getElementById('heatBar').style.display = 'none';
+          document.getElementById('scoreBoard').style.display = 'none';
+          document.getElementById('timeDisplay').style.display = 'none';
+
+        session.addEventListener('inputsourceschange', () => {
+          document.getElementById('heatBar').style.display = 'block';
+          document.getElementById('scoreBoard').style.display = 'block';
+          document.getElementById('timeDisplay').style.display = 'block';
+          for (const source of session.inputSources) {
+            if (source && source.gamepad) {
+              const gp = source.gamepad;
+
+              setInterval(() => {
+                joystickX = gp.axes[2] || 0;
+                joystickY = gp.axes[3] || 0;
+              }, 50);
             }
           }
         });
+      });
+
+      const controller = renderer.xr.getController(0);
+      scene.add(controller);
+
+      controller.addEventListener('selectstart', () => {
+        isMouseDown = true;
+      });
+
+      controller.addEventListener('selectend', () => {
+        isMouseDown = false;
+      });
+
+			renderer.shadowMap.enabled = true;
+			renderer.shadowMap.type = THREE.VSMShadowMap;
+			renderer.toneMapping = THREE.ACESFilmicToneMapping;
+			container.appendChild( renderer.domElement );
+
+			const stats = new Stats();
+			stats.domElement.style.position = 'absolute';
+			stats.domElement.style.top = '0px';
+			container.appendChild( stats.domElement );
+
+			const GRAVITY = 30;
+
+			const NUM_SPHERES = 100;
+			const SPHERE_RADIUS = 0.2;
+
+			const STEPS_PER_FRAME = 5;
+
+			const explosionFlashes = [];
+
+			const sphereGeometry = new THREE.IcosahedronGeometry( SPHERE_RADIUS, 5 );
+			const sphereMaterial = new THREE.MeshLambertMaterial( { color: 0xff4444 } );
+
+			const spheres = [];
+			let sphereIdx = 0;
+
+			for ( let i = 0; i < NUM_SPHERES; i ++ ) {
+
+				const sphere = new THREE.Mesh( sphereGeometry, sphereMaterial );
+				sphere.castShadow = true;
+				sphere.receiveShadow = true;
+
+				scene.add( sphere );
+
+				spheres.push( {
+					mesh: sphere,
+					collider: new THREE.Sphere( new THREE.Vector3( 0, - 100, 0 ), SPHERE_RADIUS ),
+					velocity: new THREE.Vector3(),
+					exploding: false,
+					explodeTime: 0
+				} );
+
+			}
+
+			const worldOctree = new Octree();
+
+			const playerCollider = new Capsule(new THREE.Vector3(5, 2.35, 5), // NUEVA POSICIÓN START
+			new THREE.Vector3(5, 3, 5),    // NUEVA POSICIÓN END
+0.35
+);
+
+			const playerVelocity = new THREE.Vector3();
+			const playerDirection = new THREE.Vector3();
+
+			let playerOnFloor = false;
+			let mouseTime = 0;
+			
+			const keyStates = {};
+
+			let isMouseDown = false;
+			let lastShotTime = 0;
+			let heatLevel = 0;
+			let overheated = false;
+			const fireRate = 0.2; // segundos entre disparos
+			const maxHeat = 100;
+			const heatPerShot = 2;
+			const heatCooldownRate = 50; // unidades por segundo
+
+      let shootSound;
+      let shootBuffer = null;
+audioLoader.load('sounds/shoot.mp3', buffer => {
+  shootBuffer = buffer;
+});
+
+			const vector1 = new THREE.Vector3();
+			const vector2 = new THREE.Vector3();
+			const vector3 = new THREE.Vector3();
+
+			document.addEventListener( 'keydown', ( event ) => {
+				keyStates[ event.code ] = true;
+			} );
+
+			document.addEventListener( 'keyup', ( event ) => {
+				keyStates[ event.code ] = false;
+			} );
+
+			document.addEventListener('mousedown', () => {
+			  isMouseDown = true;
+			  document.body.requestPointerLock();
+			});
+
+			document.addEventListener('mouseup', () => {
+			  isMouseDown = false;
+			});
+
+			document.body.addEventListener( 'mousemove', ( event ) => {
+				if ( document.pointerLockElement === document.body ) {
+          const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+          euler.setFromQuaternion(camera.quaternion);
+
+          euler.y -= event.movementX / 500;
+          euler.x -= event.movementY / 500;
+          euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x)); // limitar pitch
+
+          camera.quaternion.setFromEuler(euler);
+				}
+			} );
+
+			window.addEventListener( 'resize', onWindowResize );
+
+			function onWindowResize() {
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+			}
+
+			function throwBall() {
+        if (gameWon) return;
+
+        if (startTime === null) {
+          startTime = performance.now();
+        }
+
+	let attempts = 0;
+	while (attempts < spheres.length) {
+		const sphere = spheres[sphereIdx];
+
+		// Si no está explotando, puede usarse
+		if (!sphere.exploding) {
+			sphere.mesh.visible = true;
+			sphere.mesh.scale.set(1, 1, 1);
+			sphere.mesh.material.color.set(0xff4444);
+
+      const shootDirection = new THREE.Vector3();
+      camera.getWorldDirection(shootDirection);
+
+      const origin = new THREE.Vector3();
+      camera.getWorldPosition(origin);
+      sphere.collider.center.copy(origin).addScaledVector(shootDirection, 1.0);
+
+      const impulse = 80 + 100 * (1 - Math.exp((mouseTime - performance.now()) * 0.001));
+      sphere.velocity.copy(shootDirection).multiplyScalar(impulse);  // ✅ usar shootDirection
+
+			sphere.velocity.addScaledVector(playerVelocity, 2);
+
+			sphereIdx = (sphereIdx + 1) % spheres.length;
+      if (shootBuffer && !overheated) {
+        const shot = new THREE.Audio(listener);
+        shot.setBuffer(shootBuffer);
+        shot.setVolume(0.35); // volumen reducido
+        shot.setPlaybackRate(0.9 + Math.random() * 0.2); // variación entre 0.9 y 1.1
+        shot.play();
+        animarRetroceso();
       }
 
+			return;
+		}
 
+		sphereIdx = (sphereIdx + 1) % spheres.length;
+		attempts++;
+	}
+}
 
+			function playerCollisions() {
+				const result = worldOctree.capsuleIntersect( playerCollider );
 
+				playerOnFloor = false;
 
+				if ( result ) {
+					playerOnFloor = result.normal.y > 0;
 
-    }
+					if ( ! playerOnFloor ) {
+						playerVelocity.addScaledVector( result.normal, - result.normal.dot( playerVelocity ) );
+					}
 
+					if ( result.depth >= 1e-10 ) {
+						playerCollider.translate( result.normal.multiplyScalar( result.depth ) );
+					}
+				}
+			}
 
-  </script>
-  <!-- Medidor de calor -->
-  <div id="heatBar"
-    style="position: absolute; bottom: 20px; left: 20px; width: 220px; height: 12px; background: #222; border-radius: 6px; overflow: hidden;">
-    <div id="heatLevel" style="height: 100%; background: limegreen; width: 0%; transition: width 0.1s;"></div>
-  </div>
+			function updatePlayer( deltaTime ) {
+				let damping = Math.exp( - 4 * deltaTime ) - 1;
 
-  <!-- Advertencia de sobrecalentamiento -->
-  <div id="overheatWarning" style="
+				if ( ! playerOnFloor ) {
+					playerVelocity.y -= GRAVITY * deltaTime;
+					// small air resistance
+					damping *= 0.1;
+				}
+
+				playerVelocity.addScaledVector( playerVelocity, damping );
+
+				const deltaPosition = playerVelocity.clone().multiplyScalar( deltaTime );
+				playerCollider.translate( deltaPosition );
+
+				playerCollisions();
+
+        if (!renderer.xr.isPresenting) {
+          camera.position.copy(playerCollider.end);
+        }
+			}
+
+			function playerSphereCollision( sphere ) {
+				const center = vector1.addVectors( playerCollider.start, playerCollider.end ).multiplyScalar( 0.5 );
+				const sphere_center = sphere.collider.center;
+				const r = playerCollider.radius + sphere.collider.radius;
+				const r2 = r * r;
+
+				// approximation: player = 3 spheres
+				for ( const point of [ playerCollider.start, playerCollider.end, center ] ) {
+					const d2 = point.distanceToSquared( sphere_center );
+
+					if ( d2 < r2 ) {
+						const normal = vector1.subVectors( point, sphere_center ).normalize();
+						const v1 = vector2.copy( normal ).multiplyScalar( normal.dot( playerVelocity ) );
+						const v2 = vector3.copy( normal ).multiplyScalar( normal.dot( sphere.velocity ) );
+
+						playerVelocity.add( v2 ).sub( v1 );
+						sphere.velocity.add( v1 ).sub( v2 );
+
+						const d = ( r - Math.sqrt( d2 ) ) / 2;
+						sphere_center.addScaledVector( normal, - d );
+					}
+				}
+			}
+
+			function spheresCollisions() {
+				for ( let i = 0, length = spheres.length; i < length; i ++ ) {
+					const s1 = spheres[ i ];
+
+					for ( let j = i + 1; j < length; j ++ ) {
+						const s2 = spheres[ j ];
+
+						const d2 = s1.collider.center.distanceToSquared( s2.collider.center );
+						const r = s1.collider.radius + s2.collider.radius;
+						const r2 = r * r;
+
+						if ( d2 < r2 ) {
+							const normal = vector1.subVectors( s1.collider.center, s2.collider.center ).normalize();
+							const v1 = vector2.copy( normal ).multiplyScalar( normal.dot( s1.velocity ) );
+							const v2 = vector3.copy( normal ).multiplyScalar( normal.dot( s2.velocity ) );
+
+							s1.velocity.add( v2 ).sub( v1 );
+							s2.velocity.add( v1 ).sub( v2 );
+
+							const d = ( r - Math.sqrt( d2 ) ) / 2;
+
+							s1.collider.center.addScaledVector( normal, d );
+							s2.collider.center.addScaledVector( normal, - d );
+						}
+					}
+				}
+			}
+
+			function updateSpheres(deltaTime) {
+			  spheres.forEach(sphere => {
+				// Si está explotando, ejecutar la animación de explosión
+				if (sphere.exploding) {
+					sphere.explodeTime += deltaTime;
+
+					const scale = 1 + 2 * Math.sin(Math.PI * Math.min(sphere.explodeTime, 0.2) * 5);
+					sphere.mesh.scale.set(scale, scale, scale);
+
+					sphere.mesh.material.color.set(0xffaa00);
+
+					if (sphere.explodeTime > 0.2) {
+						sphere.mesh.visible = false;
+						sphere.collider.center.set(0, -100, 0);
+						sphere.exploding = false;
+						sphere.mesh.scale.set(1, 1, 1);
+						sphere.mesh.material.color.set(0xff4444);
+					}
+
+					return; // No mover ni procesar colisiones si está explotando
+				}
+
+				// Mover esfera
+				sphere.collider.center.addScaledVector(sphere.velocity, deltaTime);
+
+				for (const avion of aviones) {
+				  if (avion.isFalling) continue;
+
+				  const avionPos = avion.mesh.position;
+				  const distancia = avionPos.distanceTo(sphere.collider.center);
+
+				  if (distancia < 2.0) { // Ajusta el radio de colisión si es necesario
+					avion.health -= 1;
+					sphere.exploding = true;
+					sphere.explodeTime = 0;
+
+					if (avion.health <= 0) {
+
+					  if (avion.curvo) {
+						avionesCurvosEliminados++;
+						document.getElementById('curvosEliminados').innerText = avionesCurvosEliminados;
+					  } else {
+						avionesRectosEliminados++;
+						document.getElementById('rectosEliminados').innerText = avionesRectosEliminados;
+					  }
+
+					  const totalDestruidos = avionesRectosEliminados + avionesCurvosEliminados;
+					  if (totalDestruidos >= TOTAL_OBJETIVO && !gameWon) {
+						gameWon = true;
+						const endTime = performance.now();
+						const timeTaken = ((endTime - startTime) / 1000).toFixed(2);
+
+						// 🟡 Mostrar mensaje inmediato para que el jugador vea que ganó
+						const aviso = document.createElement('div');
+						aviso.innerText = '✅ Objetivo cumplido';
+						aviso.style.position = 'absolute';
+						aviso.style.top = '50%';
+						aviso.style.left = '50%';
+						aviso.style.transform = 'translate(-50%, -50%)';
+						aviso.style.color = 'white';
+						aviso.style.fontSize = '22px';
+						aviso.style.background = 'rgba(0, 0, 0, 0.7)';
+						aviso.style.padding = '10px 20px';
+						aviso.style.borderRadius = '10px';
+						aviso.style.zIndex = '9999';
+						document.body.appendChild(aviso);
+
+						setTimeout(() => {
+						  document.body.removeChild(aviso);
+						  document.exitPointerLock();
+
+						  document.getElementById('heatBar').style.display = 'none';
+						  document.getElementById('scoreBoard').style.display = 'none';
+						  document.getElementById('timeDisplay').style.display = 'none';
+						  document.getElementById('overheatWarning').style.display = 'none';
+
+						  const recordAnterior = localStorage.getItem(RECORD_KEY);
+						  const nuevoRecord = !recordAnterior || timeTaken < recordAnterior;
+
+						  if (nuevoRecord) {
+							localStorage.setItem(RECORD_KEY, timeTaken);
+						  }
+
+						  const victoryDiv = document.createElement('div');
+						  victoryDiv.innerHTML = `
+							🎉 ¡Ganaste!<br>
+							Tiempo: <strong>${timeTaken}</strong> segundos<br>
+							${nuevoRecord ? '🏆 ¡Nuevo récord!' : `⏱️ Récord anterior: ${recordAnterior}s`}
+							<br><br>
+							<button id="reiniciarBtn">Reiniciar</button>
+						  `;
+						  victoryDiv.style.position = 'absolute';
+						  victoryDiv.style.top = '50%';
+						  victoryDiv.style.left = '50%';
+						  victoryDiv.style.transform = 'translate(-50%, -50%)';
+						  victoryDiv.style.color = 'white';
+						  victoryDiv.style.fontSize = '22px';
+						  victoryDiv.style.background = 'rgba(0, 0, 0, 0.85)';
+						  victoryDiv.style.padding = '20px';
+						  victoryDiv.style.borderRadius = '12px';
+						  victoryDiv.style.textAlign = 'center';
+						  victoryDiv.style.zIndex = '9999';
+						  document.body.appendChild(victoryDiv);
+
+						  document.getElementById('reiniciarBtn').onclick = () => {
+							location.reload();
+						  };
+						}, 2000);
+					  }
+
+					  avion.isFalling = true;
+
+					  let horizontalDirection = new THREE.Vector3();
+					  let velocidadReal = 0;
+
+					  if (avion.curvo && avion.mesh.userData.angle !== undefined) {
+						const angle = avion.mesh.userData.angle;
+
+						const tangent = new THREE.Vector3(
+						  -Math.sin(angle),
+						  0,
+						  Math.cos(angle)
+						).normalize();
+
+						const radius = avion.mesh.userData.radius;
+						const angularSpeed = avion.mesh.userData.speedCurvo * 4; // ✅ CORRECTO AQUÍ
+						velocidadReal = radius * angularSpeed;
+
+						horizontalDirection.copy(tangent);
+
+						avion.initialQuaternion = avion.mesh.quaternion.clone();
+					  } else {
+						horizontalDirection.set(0, 0, 1);
+						velocidadReal = avion.speedRecto * 100;
+					  }
+
+					  avion.fallVelocity = horizontalDirection.clone().multiplyScalar(velocidadReal);
+					  avion.fallVelocity.y = -1.5;
+					  avion.verticalSpeed = -1.5;
+					}
+				  }
+				}
+
+				// Colisión con el mundo
+				const result = worldOctree.sphereIntersect(sphere.collider);
+
+				if (result) {
+					sphere.velocity.set(0, 0, 0);
+					sphere.collider.center.add(result.normal.multiplyScalar(result.depth));
+					sphere.exploding = true;
+					sphere.explodeTime = 0;
+
+					// Crear flash de luz
+					const flash = new THREE.PointLight(0xffaa00, 8, 6); // color, intensidad, distancia
+					flash.position.copy(sphere.collider.center);
+					scene.add(flash);
+
+					// Guardar el flash para eliminarlo luego
+					explosionFlashes.push({ light: flash, time: 0 });
+
+				} else {
+					sphere.velocity.y -= GRAVITY * deltaTime;
+				}
+
+				// Frenado
+				const damping = Math.exp(-1.5 * deltaTime) - 1;
+				sphere.velocity.addScaledVector(sphere.velocity, damping);
+
+				playerSphereCollision(sphere);
+			  });
+
+			  spheresCollisions();
+
+			  // Actualizar posición visual de cada esfera
+			  for (const sphere of spheres) {
+				  sphere.mesh.position.copy(sphere.collider.center);
+			  }
+
+			  // Actualizar y eliminar flashes de explosión
+			  for (let i = explosionFlashes.length - 1; i >= 0; i--) {
+				  const flash = explosionFlashes[i];
+				  flash.time += deltaTime;
+
+				  if (flash.time > 0.2) {
+					  scene.remove(flash.light);
+					  explosionFlashes.splice(i, 1);
+				  }
+			  }
+			}
+
+			function getForwardVector() {
+				camera.getWorldDirection( playerDirection );
+				playerDirection.y = 0;
+				playerDirection.normalize();
+				return playerDirection;
+			}
+
+			function getSideVector() {
+				camera.getWorldDirection( playerDirection );
+				playerDirection.y = 0;
+				playerDirection.normalize();
+				playerDirection.cross( camera.up );
+				return playerDirection;
+			}
+
+			function controls( deltaTime ) {
+        if (gameWon) return;
+
+				// gives a bit of air control
+				const speedDelta = deltaTime * ( playerOnFloor ? 25 : 8 );
+
+				if ( keyStates[ 'KeyW' ] ) {
+					playerVelocity.add( getForwardVector().multiplyScalar( speedDelta ) );
+				}
+
+				if ( keyStates[ 'KeyS' ] ) {
+					playerVelocity.add( getForwardVector().multiplyScalar( - speedDelta ) );
+				}
+
+				if ( keyStates[ 'KeyA' ] ) {
+					playerVelocity.add( getSideVector().multiplyScalar( - speedDelta ) );
+				}
+
+				if ( keyStates[ 'KeyD' ] ) {
+					playerVelocity.add( getSideVector().multiplyScalar( speedDelta ) );
+				}
+
+				if ( playerOnFloor ) {
+					if ( keyStates[ 'Space' ] ) {
+						playerVelocity.y = 15;
+					}
+				}
+
+        // Movimiento con joystick VR
+        playerVelocity.add(getForwardVector().multiplyScalar(joystickY * deltaTime * 20));
+        playerVelocity.add(getSideVector().multiplyScalar(joystickX * deltaTime * 20));
+			}
+
+			import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+			const dracoLoader = new DRACOLoader();
+			dracoLoader.setDecoderPath('./jsm/libs/draco/');
+
+			const loader = new GLTFLoader().setPath('./models/gltf/');
+			loader.setDRACOLoader(dracoLoader);
+
+			const loadingDiv = document.createElement('div');
+			loadingDiv.innerText = 'Cargando mapa...';
+			loadingDiv.style.position = 'absolute';
+			loadingDiv.style.top = '50%';
+			loadingDiv.style.left = '50%';
+			loadingDiv.style.transform = 'translate(-50%, -50%)';
+			loadingDiv.style.color = 'white';
+			loadingDiv.style.fontSize = '24px';
+			document.body.appendChild(loadingDiv);
+
+			loader.load('battlefield.glb',(gltf) => {
+
+			    scene.add(gltf.scene);
+			    worldOctree.fromGraphNode(gltf.scene);
+
+			    gltf.scene.traverse(child => {
+				  if (child.isMesh) {
+					child.castShadow = true;
+					child.receiveShadow = true;
+
+					if (child.material.map) {
+					  child.material.map.anisotropy = 4;
+					}
+				  }
+				});
+
+			    //const helper = new OctreeHelper(worldOctree);
+			    helper.visible = false;
+			    //scene.add(helper);
+
+			    const gui = new GUI({ width: 200 });
+			    gui.add({ debug: false }, 'debug').onChange(val => helper.visible = val);
+
+			    // ✅ Eliminar el mensaje tras carga exitosa
+			    removeLoading();
+			  },
+			  undefined,
+			  (error) => {
+			    console.error("❌ Error cargando el mapa:", error);
+
+			    // ❗ También quitamos el mensaje si falla
+			    removeLoading();
+			  }
+			);
+
+			// Función segura para eliminar el mensaje
+			function removeLoading() {
+			  if (document.body.contains(loadingDiv)) {
+			    loadingDiv.remove();
+			  }
+
+			  // ✅ Mostrar mensaje de éxito
+			  const successDiv = document.createElement('div');
+			  successDiv.innerText = 'Mapa cargado con éxito';
+			  successDiv.style.position = 'absolute';
+			  successDiv.style.top = '50%';
+			  successDiv.style.left = '50%';
+			  successDiv.style.transform = 'translate(-50%, -50%)';
+			  successDiv.style.color = 'white';
+			  successDiv.style.fontSize = '24px';
+			  successDiv.style.background = 'rgba(0, 0, 0, 0.6)';
+			  successDiv.style.padding = '10px 20px';
+			  successDiv.style.borderRadius = '8px';
+			  successDiv.style.zIndex = '9999';
+			  document.body.appendChild(successDiv);
+
+			  setTimeout(() => {
+			    if (document.body.contains(successDiv)) {
+			      successDiv.remove();
+			    }
+			  }, 2500);
+			}
+
+const avionLoader = new GLTFLoader().setPath('./models/gltf/');
+avionLoader.setDRACOLoader(dracoLoader);
+
+const aviones = [];
+
+let avionesRectosEliminados = 0;
+let avionesCurvosEliminados = 0;
+
+function crearAvion() {
+  avionLoader.load('avion.glb', (gltf) => {
+    const avion = gltf.scene.clone();
+
+    const x = Math.random() * 80 - 40;
+    const y = 8 + Math.random() * 3; // Altura un poco más baja
+    const z = -100; // Muy lejos, para que aparezca en la niebla
+
+    avion.position.set(x, y, z);
+    avion.rotation.y = 0; // Volar hacia adelante
+
+    avion.scale.set(1, 1, 1);
+    avion.traverse(child => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        child.frustumCulled = false;
+      }
+    });
+
+    scene.add(avion);
+    const engineSound = new THREE.PositionalAudio(listener);
+    audioLoader.load('sounds/plane_engine.mp3', buffer => {
+      engineSound.setBuffer(buffer);
+      engineSound.setLoop(true);
+      engineSound.setVolume(4);
+      engineSound.setRefDistance(8);
+      engineSound.setRolloffFactor(2);
+      engineSound.setDistanceModel('exponential');
+
+      // 🎚️ Pitch aleatorio entre 0.95 y 1.05
+      engineSound.setPlaybackRate(0.95 + Math.random() * 0.1);
+
+      // ⏱️ Retardo aleatorio hasta 2 segundos
+      setTimeout(() => {
+        engineSound.play();
+      }, Math.random() * 2000);
+    });
+
+    avion.add(engineSound);
+
+		aviones.push({
+		  mesh: avion,
+		  speedRecto: 0.7,
+		  curvo: false,
+		  health: 3,
+		  isFalling: false
+		});
+
+  });
+}
+
+// Crear varios aviones iniciales
+for (let i = 0; i < 5; i++) {
+  crearAvion();
+}
+
+function crearAvionCurvo() {
+  avionLoader.load('avion_curvo.glb', (gltf) => {
+    const avion = gltf.scene.clone();
+
+    const angle = Math.random() * 2 * Math.PI;
+    const radius = 60 + Math.random() * 20;
+    const y = 8 + Math.random() * 5;
+
+    avion.position.set(Math.cos(angle) * radius, y, Math.sin(angle) * radius);
+    // Corrige orientación base
+
+    avion.scale.set(1, 1, 1);
+    const speedCurvo = 0.4 + Math.random() * 0.1;
+
+    avion.userData = {
+      angle,
+      radius,
+      speedCurvo,
+      heightBase: y,
+      heightOffset: Math.random() * 2
+    };
+
+    avion.traverse(child => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        child.frustumCulled = false;
+      }
+    });
+
+    scene.add(avion);
+    const engineSound = new THREE.PositionalAudio(listener);
+    audioLoader.load('sounds/plane_engine.mp3', buffer => {
+      engineSound.setBuffer(buffer);
+      engineSound.setLoop(true);
+      engineSound.setVolume(6);
+      engineSound.setRefDistance(8);
+      engineSound.setRolloffFactor(2);
+      engineSound.setDistanceModel('exponential');
+
+      // 🎚️ Pitch aleatorio entre 0.95 y 1.05
+      engineSound.setPlaybackRate(0.95 + Math.random() * 0.1);
+
+      // ⏱️ Retardo aleatorio hasta 2 segundos
+      setTimeout(() => {
+        engineSound.play();
+      }, Math.random() * 2000);
+    });
+
+    avion.add(engineSound);
+
+		aviones.push({
+		  mesh: avion,
+		  speedCurvo,
+		  curvo: true,
+		  health: 3,
+		  isFalling: false
+		});
+
+  });
+}
+
+// Crear aviones curvos
+for (let i = 0; i < 3; i++) {
+  crearAvionCurvo();
+}
+
+			function teleportPlayerIfOob() {
+				if ( camera.position.y <= - 25 ) {
+					playerCollider.start.set(5, 2.35, 5);
+					playerCollider.end.set(5, 3, 5);
+					camera.position.copy(playerCollider.end);
+
+					camera.position.copy( playerCollider.end );
+					camera.rotation.set( 0, 0, 0 );
+				}
+			}
+
+			function moverAvionCurvo(avion, deltaTime) {
+			  const data = avion.mesh.userData;
+			  data.angle += data.speed * deltaTime * 4;
+			  data.radius += 0.1 * deltaTime;
+
+			  const x = Math.cos(data.angle) * data.radius;
+			  const z = Math.sin(data.angle) * data.radius;
+			  const y = data.heightBase + Math.sin(clock.elapsedTime * 0.5 + data.heightOffset) * 1.5;
+
+			  // Solo mover sin tocar rotación
+			  avion.mesh.position.set(x, y, z);
+
+			  // Elimina rotación existente (para que no se herede nada)
+			  avion.mesh.rotation.set(0, 0, 0);
+			  avion.mesh.quaternion.identity();
+			}
+
+function moverAvionRecto(avion, deltaTime, i) {
+  avion.mesh.position.z += avion.speed * 100 * deltaTime;
+  avion.mesh.position.y += Math.sin(clock.elapsedTime * 0.5 + i) * 0.002;
+
+  if (!avion.isFalling && avion.mesh.position.z > 100) {
+	if (avion.curvo) {
+	  avionesCurvosEliminados++;
+	  document.getElementById('curvosEliminados').innerText = avionesCurvosEliminados;
+	} else {
+	  avionesRectosEliminados++;
+	  document.getElementById('rectosEliminados').innerText = avionesRectosEliminados;
+	}
+
+	scene.remove(avion.mesh);
+	aviones.splice(i, 1);
+	crearAvion();
+  }
+}
+
+function actualizarCaidaAvion(avion, deltaTime, i) {
+  avion.mesh.position.addScaledVector(avion.fallVelocity, deltaTime);
+  avion.fallVelocity.y -= GRAVITY * deltaTime * 0.5;
+
+  // Rotación al caer
+  avion.mesh.rotation.x += deltaTime * 4;
+  avion.mesh.rotation.z += deltaTime * 2;
+
+  if (avion.mesh.position.y < 0.5) {
+    // Explosión visual
+    const explosionMaterial = new THREE.SpriteMaterial({
+      map: explosionTexture,
+      transparent: true,
+      opacity: 1,
+      depthWrite: false
+    });
+    const explosion = new THREE.Sprite(explosionMaterial);
+    explosion.scale.set(3, 3, 3);
+    explosion.position.copy(avion.mesh.position);
+    scene.add(explosion);
+
+    const flash = new THREE.PointLight(0xff5500, 10, 8);
+    flash.position.copy(avion.mesh.position);
+    scene.add(flash);
+
+    explosionFlashes.push({ light: explosion, time: 0, type: 'explosion' });
+    explosionFlashes.push({ light: flash, time: 0, type: 'light' });
+
+    scene.remove(avion.mesh);
+    aviones.splice(i, 1);
+  }
+}
+
+			function animate() {
+			  const deltaTime = Math.min(0.05, clock.getDelta()) / STEPS_PER_FRAME;
+
+			  for (let i = 0; i < STEPS_PER_FRAME; i++) {
+				controls(deltaTime);
+				updatePlayer(deltaTime);
+				updateSpheres(deltaTime);
+				teleportPlayerIfOob();
+			  }
+
+			  // 🔥 Disparo continuo y sobrecalentamiento
+			  if (!gameWon && isMouseDown && !overheated) {
+				const now = performance.now() / 1000;
+				if (now - lastShotTime >= fireRate) {
+				  throwBall();
+				  lastShotTime = now;
+				  heatLevel += heatPerShot;
+				  if (heatLevel >= maxHeat) {
+					overheated = true;
+					heatLevel = maxHeat;
+				  }
+				}
+			  } else {
+				// 🧊 Enfriamiento
+				heatLevel -= heatCooldownRate * deltaTime;
+				if (heatLevel <= 0) {
+				  overheated = false;
+				  heatLevel = 0;
+				}
+			  }
+
+			  renderer.render(scene, camera);
+			  stats.update();
+
+			  for (let i = aviones.length - 1; i >= 0; i--) {
+				const avion = aviones[i];
+
+				if (avion.isFalling) {
+				  // Inicializar velocidad vertical si no existe
+				  if (avion.verticalSpeed === undefined) avion.verticalSpeed = -1.5;
+
+				  // Inicializar banking si no existe (esto se guarda en el momento de caer)
+				  if (avion.initialQuaternion) {
+					avion.mesh.quaternion.copy(avion.initialQuaternion);
+
+					// Añadir rotación tipo caída descontrolada
+					avion.mesh.rotateX(deltaTime * 2.5);
+					avion.mesh.rotateZ(deltaTime * 1.5);
+				  } else {
+					// Si no tiene banking guardado, usar rotación básica
+					avion.mesh.rotation.x += deltaTime * 2.5;
+					avion.mesh.rotation.z += deltaTime * 1.5;
+				  }
+
+				  // Calcular movimiento horizontal
+				  const movement = avion.fallVelocity.clone();
+				  movement.y = avion.verticalSpeed; // usar componente vertical actual
+
+				  // Aplicar movimiento
+				  avion.mesh.position.addScaledVector(movement, deltaTime);
+
+				  // Aumentar caída vertical
+				  avion.verticalSpeed -= GRAVITY * deltaTime * 0.7;
+
+				  // Humo en caída
+				  if (!avion.smokeTimer) avion.smokeTimer = 0;
+				  avion.smokeTimer += deltaTime;
+				  if (avion.smokeTimer > 0.03) {
+					avion.smokeTimer = 0;
+
+					const smokeGroup = new THREE.Group();
+					for (let j = 0; j < 5; j++) {
+					  const material = new THREE.SpriteMaterial({
+						map: smokeTexture,
+						transparent: true,
+						opacity: 0.5 + Math.random() * 0.2,
+						depthWrite: false,
+						blending: THREE.NormalBlending
+					  });
+
+					  const sprite = new THREE.Sprite(material);
+					  const scale = 1.5 + Math.random() * 1.2;
+					  sprite.scale.set(scale, scale, scale);
+
+					  const offset = new THREE.Vector3(
+						(Math.random() - 0.5) * 2,
+						Math.random() * 1.5,
+						(Math.random() - 0.5) * 2
+					  );
+					  sprite.position.copy(offset);
+					  material.rotation = Math.random() * Math.PI * 2;
+
+					  smokeGroup.add(sprite);
+					}
+
+					smokeGroup.position.copy(avion.mesh.position.clone());
+					scene.add(smokeGroup);
+
+					explosionFlashes.push({
+					  light: smokeGroup,
+					  time: 0,
+					  type: 'smokeGroup',
+					  velocity: new THREE.Vector3(
+						(Math.random() - 0.5) * 0.05,
+						0.08 + Math.random() * 0.05,
+						(Math.random() - 0.5) * 0.05
+					  )
+					});
+				  }
+
+				  // Detectar impacto con el suelo
+				  if (avion.mesh.position.y < -7) {
+					const explosionMaterial = new THREE.SpriteMaterial({
+					  map: explosionTexture,
+					  transparent: true,
+					  opacity: 1,
+					  depthWrite: false
+					});
+					const explosion = new THREE.Sprite(explosionMaterial);
+					explosion.scale.set(3, 3, 3);
+					explosion.position.copy(avion.mesh.position);
+					scene.add(explosion);
+
+					const flash = new THREE.PointLight(0xff5500, 10, 8);
+					flash.position.copy(avion.mesh.position);
+					scene.add(flash);
+
+					explosionFlashes.push({ light: explosion, time: 0, type: 'explosion' });
+					explosionFlashes.push({ light: flash, time: 0, type: 'light' });
+
+					scene.remove(avion.mesh);
+					aviones.splice(i, 1);
+
+					// 👇 AÑADIR NUEVO AVIÓN
+					if (avion.curvo) {
+					  crearAvionCurvo();
+					} else {
+					  crearAvion();
+					}
+				  }
+
+				  continue; // Saltar a siguiente avión
+				}
+
+				// Si NO está cayendo, seguir comportamiento normal
+				if (avion.curvo) {
+				  const data = avion.mesh.userData;
+				  data.angle += avion.speedCurvo * deltaTime * 4;
+				  data.radius += 0.1 * deltaTime;
+
+				  const x = Math.cos(data.angle) * data.radius;
+				  const z = Math.sin(data.angle) * data.radius;
+				  const y = data.heightBase + Math.sin(clock.elapsedTime * 0.5 + data.heightOffset) * 1.5;
+
+				  const position = new THREE.Vector3(x, y, z);
+				  const tangent = new THREE.Vector3(
+					-Math.sin(data.angle),
+					0,
+					Math.cos(data.angle)
+				  ).normalize();
+
+				  const up = new THREE.Vector3(0, 1, 0);
+				  const side = new THREE.Vector3().crossVectors(up, tangent).normalize();
+				  const correctedUp = new THREE.Vector3().crossVectors(tangent, side).normalize();
+
+				  const m = new THREE.Matrix4();
+				  m.makeBasis(side, correctedUp, tangent); // tangent = forward
+
+				  avion.mesh.position.copy(position);
+				  avion.mesh.setRotationFromMatrix(m);
+
+				  // ✈️ Banking realista (opcional)
+				  avion.mesh.rotateZ(Math.sin(data.angle * 2) * 0.3);
+				} else {
+					avion.mesh.position.z += avion.speedRecto * 100 * deltaTime;
+					avion.mesh.position.y += Math.sin(clock.elapsedTime * 0.5 + i) * 0.002;
+
+					if (!avion.isFalling && avion.mesh.position.z > 100) {
+					  scene.remove(avion.mesh);
+					  aviones.splice(i, 1);
+					  crearAvion();
+					}
+				}
+			  }
+
+			  for (let i = explosionFlashes.length - 1; i >= 0; i--) {
+				const e = explosionFlashes[i];
+				e.time += deltaTime;
+
+				if (e.type === 'smoke') {
+				  e.light.position.addScaledVector(e.velocity, deltaTime); // se mueve hacia arriba
+				  e.light.material.opacity -= deltaTime * 0.15; // más lento
+				  e.light.scale.multiplyScalar(1 + deltaTime * 0.1);
+				  if (e.light.material.opacity <= 0) {
+					scene.remove(e.light);
+					explosionFlashes.splice(i, 1);
+				  }
+				} else if (e.type === 'smokeGroup') {
+				  let fullyFaded = true;
+
+				  e.light.children.forEach(sprite => {
+					sprite.material.opacity -= deltaTime * 0.015;
+					sprite.material.rotation += deltaTime * 0.5;
+					sprite.scale.multiplyScalar(1 + deltaTime * 0.03);
+					if (sprite.material.opacity > 0.01) fullyFaded = false;
+				  });
+
+				  if (fullyFaded) {
+					e.light.children.forEach(sprite => scene.remove(sprite));
+					scene.remove(e.light);
+					explosionFlashes.splice(i, 1);
+				  }
+				  e.light.position.addScaledVector(e.velocity, deltaTime);
+				} else if (e.type === 'explosion') {
+				  e.light.material.opacity -= deltaTime * 0.07; // más lenta
+				  e.light.scale.multiplyScalar(1 + deltaTime * 2.5); // crecimiento moderado
+				  if (e.light.material.opacity <= 0) {
+					scene.remove(e.light);
+					explosionFlashes.splice(i, 1);
+				  }
+				} else if (e.type === 'light') {
+				  if (e.time > 4) { // luz dura más
+					scene.remove(e.light);
+					explosionFlashes.splice(i, 1);
+				  }
+				}
+			  }
+
+			  const heatLevelDiv = document.getElementById('heatLevel');
+			  const heatPercent = (heatLevel / maxHeat) * 100;
+			  heatLevelDiv.style.width = `${heatPercent}%`;
+
+			  // Cambiar color según el porcentaje de calor
+			  if (heatPercent > 80) {
+				heatLevelDiv.style.background = 'red';
+			  } else if (heatPercent > 50) {
+				heatLevelDiv.style.background = 'orange';
+			  } else if (heatPercent > 20) {
+				heatLevelDiv.style.background = 'yellow';
+			  } else {
+				heatLevelDiv.style.background = 'limegreen';
+			  }
+
+			  // Mostrar u ocultar advertencia de sobrecalentamiento
+			  const warning = document.getElementById('overheatWarning');
+			  if (overheated) {
+				warning.style.display = 'block';
+			  } else {
+				warning.style.display = 'none';
+			  }
+
+			  if (startTime !== null) {
+				const now = performance.now();
+				const elapsedSeconds = ((now - startTime) / 1000).toFixed(2);
+
+				// UI tradicional
+				document.getElementById('timeElapsed').innerText = elapsedSeconds;
+
+				// Actualizar canvas para UI VR
+				// 🕒 Actualizar cronómetro VR
+				ctxTimer.clearRect(0, 0, canvasTimer.width, canvasTimer.height);
+				ctxTimer.fillText(`⏱️ ${elapsedSeconds}s`, 10, 40);
+				texTimer.needsUpdate = true;
+
+				// 🔥 Actualizar barra de calor VR
+				ctxHeat.clearRect(0, 0, heatCanvas.width, heatCanvas.height);
+				ctxHeat.fillStyle = '#222';
+				ctxHeat.fillRect(0, 0, 256, 32);
+
+				ctxHeat.fillStyle = heatPercent > 80 ? 'red' :
+				                    heatPercent > 50 ? 'orange' :
+				                    heatPercent > 20 ? 'yellow' : 'limegreen';
+				ctxHeat.fillRect(0, 0, heatPercent * 2.56, 32); // escala a 256 px
+				texHeat.needsUpdate = true;
+
+				// 💣 Actualizar puntuación VR
+				ctxScore.clearRect(0, 0, scoreCanvas.width, scoreCanvas.height);
+				ctxScore.fillText(`💣 ${avionesRectosEliminados} 🛩️ ${avionesCurvosEliminados}`, 10, 40);
+				texScore.needsUpdate = true;
+			  }
+			}
+
+		</script>
+
+<!-- Medidor de calor -->
+<div id="heatBar" style="position: absolute; bottom: 20px; left: 20px; width: 220px; height: 12px; background: #222; border-radius: 6px; overflow: hidden;">
+  <div id="heatLevel" style="height: 100%; background: limegreen; width: 0%; transition: width 0.1s;"></div>
+</div>
+
+<!-- Advertencia de sobrecalentamiento -->
+<div id="overheatWarning" style="
   position: absolute;
   bottom: 40px;
   left: 20px;
@@ -1579,9 +1330,8 @@
   text-shadow: 1px 1px 4px black;
 ">⚠️ ¡Sobrecalentado!</div>
 
-
-  <!-- Puntaje -->
-  <div id="scoreBoard" style="
+<!-- Puntaje -->
+<div id="scoreBoard" style="
   position: absolute;
   bottom: 80px;
   left: 20px;
@@ -1591,12 +1341,11 @@
   padding: 8px 12px;
   border-radius: 6px;
   line-height: 1.4;">
-    💣 Bombarderos: <span id="rectosEliminados">0</span><br>
-    🛩️ Cazas: <span id="curvosEliminados">0</span>
-  </div>
+  💣 Bombarderos: <span id="rectosEliminados">0</span><br>
+  🛩️ Cazas: <span id="curvosEliminados">0</span>
+</div>
 
-
-  <div id="timeDisplay" style="
+<div id="timeDisplay" style="
   position: absolute;
   top: 20px;
   right: 20px;
@@ -1609,10 +1358,7 @@
   text-shadow: 1px 1px 2px black;
   z-index: 1000;
 ">
-    ⏱️ Tiempo: <span id="timeElapsed">0.00</span> s
-
-
-  </div>
-</body>
-
+  ⏱️ Tiempo: <span id="timeElapsed">0.00</span> s
+</div>		
+	</body>
 </html>
